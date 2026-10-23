@@ -16,14 +16,14 @@
         RoundedRectangle:
             pos: self.pos
             size: self.size
-            radius: [dp(24)]
+            radius: [self.corner_radius]
         Color:
             rgba: (self.ripple_color[0], self.ripple_color[1], self.ripple_color[2], self.ripple_color[3] * self.ripple_alpha)
         StencilPush
         RoundedRectangle:
             pos: self.pos
             size: self.size
-            radius: [dp(24)]
+            radius: [self.corner_radius]
         StencilUse
         Ellipse:
             pos: (self.ripple_x - self.ripple_radius, self.ripple_y - self.ripple_radius)
@@ -32,8 +32,12 @@
         RoundedRectangle:
             pos: self.pos
             size: self.size
-            radius: [dp(24)]
+            radius: [self.corner_radius]
         StencilPop
+<Label>:
+    font_name: 'PixelUI'
+<Button>:
+    font_name: 'PixelUI'
 <MenuIconButton>:
     canvas.after:
         Color:

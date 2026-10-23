@@ -30,6 +30,7 @@ class PixelButton(Button):
     ripple_color = ListProperty([.72, .48, .37, 1])
     fill_color = ListProperty([.85, .83, .79, 1])
     text_color = ListProperty([.12, .12, .12, 1])
+    corner_radius = NumericProperty(dp(24))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -496,8 +497,73 @@ class GameScreen(FloatLayout):
         self.ids.board_container.add_widget(self.board_widget)
         self.bind(size=self._fit_board)
         Clock.schedule_once(self._fit_board, 0)
-        Clock.schedule_once(self._show_side_picker, .1)
+        self._build_main_menu()
+        self._show_main_menu()
         self.refresh()
+
+    def _build_main_menu(self):
+        self.main_menu = BoxLayout(orientation='vertical', spacing=dp(12),
+                                   padding=(dp(20), dp(20)), size_hint=(.88, None),
+                                   height=dp(420), pos_hint={'center_x': .5, 'center_y': .5})
+        self.main_menu_card = RoundCard(orientation='vertical', spacing=dp(8),
+                                        padding=(dp(20), dp(20)),
+                                        fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
+                                        corner_radius=dp(28))
+        self._main_menu_title = Label(text='PIXEL CHESS', size_hint_y=None, height=dp(48),
+                                      font_size='30sp', bold=True, color=self.text_color)
+        self._main_menu_subtitle = Label(text='A quiet place for a thoughtful game', size_hint_y=None,
+                                         height=dp(28), font_size='14sp', color=self.muted_color)
+        self.main_menu_card.add_widget(self._main_menu_title)
+        self.main_menu_card.add_widget(self._main_menu_subtitle)
+        self._main_menu_buttons = []
+        for caption, action, enabled in (
+                ('Singleplayer', self._start_singleplayer, True),
+                ('Multiplayer', None, False),
+                ('Settings', self._show_settings, True),
+                ('About', self._show_about, True)):
+            button = PixelButton(text=caption, size_hint_y=None, height=dp(48),
+                                 corner_radius=dp(0))
+            button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
+            button.text_color = self.text_color
+            button.disabled = not enabled
+            if not enabled:
+                button.opacity = .48
+            if action:
+                button.bind(on_release=lambda *_args, callback=action: callback())
+            self.main_menu_card.add_widget(button)
+            self._main_menu_buttons.append(button)
+        self.main_menu.add_widget(self.main_menu_card)
+        self.add_widget(self.main_menu)
+
+    def _show_main_menu(self):
+        self._in_main_menu = True
+        self.main_menu.opacity = 0
+        self.main_menu.disabled = False
+        self.ids.board_container.opacity = 0
+        self.ids.board_container.disabled = True
+        self.ids.menu_button.opacity = 0
+        self.ids.menu_button.disabled = True
+        self.ids.status_text.opacity = 0
+        Animation.cancel_all(self.main_menu, 'opacity')
+        Animation(opacity=1, duration=.22, t='out_quad').start(self.main_menu)
+
+    def _start_singleplayer(self):
+        self._in_main_menu = False
+        Animation.cancel_all(self.main_menu, 'opacity')
+        fade = Animation(opacity=0, duration=.14, t='out_quad')
+        fade.bind(on_complete=lambda *_: self._hide_main_menu())
+        fade.start(self.main_menu)
+        self.ids.board_container.disabled = False
+        self.ids.menu_button.disabled = False
+        self.ids.status_text.opacity = 1
+        self._side_picker = None
+        Clock.schedule_once(self._show_side_picker, .12)
+
+    def _hide_main_menu(self):
+        if not self._in_main_menu:
+            self.main_menu.disabled = True
+            self.ids.board_container.opacity = 1
+            self.ids.menu_button.opacity = 1
 
     def _poll_theme(self, *_):
         dark = is_dark_mode()
@@ -572,6 +638,13 @@ class GameScreen(FloatLayout):
             for name, value in colors.items():
                 setattr(self, name, value)
         Window.clearcolor = colors["bg_color"]
+        if hasattr(self, "main_menu_card"):
+            self.main_menu_card.fill_color = ((.16, .16, .15, 1) if dark else (.99, .98, .95, 1))
+            self._main_menu_title.color = colors["text_color"]
+            self._main_menu_subtitle.color = colors["muted_color"]
+            for button in self._main_menu_buttons:
+                button.fill_color = (.31, .31, .30, 1) if dark else (.85, .83, .79, 1)
+                button.text_color = colors["text_color"]
         for widget in self.walk():
             if isinstance(widget, PixelButton):
                 widget.fill_color = (.31, .31, .30, 1) if dark else (.85, .83, .79, 1)
@@ -611,21 +684,24 @@ class GameScreen(FloatLayout):
         from kivy.graphics import Color, RoundedRectangle
         self.menu_open = True
         self.menu_popup = self.ids.popup_layer
-        self.menu_popup.size = (dp(190), dp(112))
-        self.menu_popup.padding = dp(5)
-        self.menu_popup.spacing = dp(3)
+        popup_width = max(dp(280), self.width - dp(24))
+        popup_height = dp(132)
+        self.menu_popup.size = (popup_width, popup_height)
+        self.menu_popup.padding = dp(0)
+        self.menu_popup.spacing = dp(0)
         self.menu_popup.clear_widgets()
         self.menu_popup.canvas.before.clear()
         with self.menu_popup.canvas.before:
             self.menu_popup._surface_color = Color(*((.17, .17, .16, 1) if self.dark_mode else (.98, .97, .94, 1)))
-            self.menu_popup._surface = RoundedRectangle(pos=self.menu_popup.pos, size=(dp(190), dp(112)),
-                                                        radius=[dp(6)])
+            self.menu_popup._surface = RoundedRectangle(pos=self.menu_popup.pos, size=self.menu_popup.size,
+                                                        radius=[0])
         self.menu_popup.bind(pos=lambda w, p: setattr(w._surface, 'pos', p),
                              size=lambda w, s: setattr(w._surface, 'size', s))
         self.menu_popup._items = []
         for text, callback in (("Settings", self._select_settings),
-                               ("About", self._select_about)):
-            item = PixelButton(text=text, font_size='15sp', size_hint=(1, 1),
+                               ("About", self._select_about),
+                               ("Main menu", self._select_main_menu)):
+            item = PixelButton(text=text, font_size='15sp', size_hint=(1, 1), corner_radius=0,
                                fill_color=(.23, .23, .22, 1) if self.dark_mode else (.91, .90, .87, 1),
                                text_color=self.text_color,
                                ripple_color=(.88, .87, .84, .38) if self.dark_mode else (.24, .23, .21, .24),
@@ -635,7 +711,10 @@ class GameScreen(FloatLayout):
                           lambda _dt: action(), .12))
             self.menu_popup._items.append(item)
             self.menu_popup.add_widget(item)
-        Clock.schedule_once(self._position_about_menu, 0)
+        self._position_about_menu()
+        self.menu_popup.opacity = 0
+        Animation.cancel_all(self.menu_popup, 'opacity')
+        Animation(opacity=1, duration=.18, t='out_quad').start(self.menu_popup)
 
     def _position_about_menu(self, *_):
         if not self.menu_open or not self.menu_popup:
@@ -643,13 +722,13 @@ class GameScreen(FloatLayout):
         button = self.menu_button
         menu = self.menu_popup
         # Both controls are direct children of the screen's FloatLayout.
-        x = max(dp(8), button.right - menu.width)
-        y = button.y - menu.height - dp(6)
+        x = (self.width - menu.width) / 2
+        y = button.y - menu.height - dp(8)
         if y < dp(8):
-            y = button.top + dp(6)
+            y = button.top + dp(8)
         self.popup_position = [x, y]
         menu._surface.pos = (x, y)
-        menu._surface.size = (dp(190), dp(112))
+        menu._surface.size = menu.size
 
     def _close_about_menu(self):
         if self.menu_popup is not None:
@@ -666,6 +745,11 @@ class GameScreen(FloatLayout):
     def _select_settings(self):
         self._close_about_menu()
         self._show_settings()
+
+    def _select_main_menu(self):
+        self._close_about_menu()
+        self._game_started = False
+        self._show_main_menu()
 
     def _show_settings(self):
         from kivy.uix.slider import Slider
@@ -698,6 +782,8 @@ class GameScreen(FloatLayout):
         card.add_widget(close)
         view.add_widget(card)
         view.open()
+        card.opacity = 0
+        Animation(opacity=1, duration=.20, t='out_quad').start(card)
 
     def _update_volume_controls(self, value, label):
         label.text = f'Master volume  {round(value * 100)}%'
@@ -762,6 +848,8 @@ class GameScreen(FloatLayout):
         card.add_widget(close)
         view.add_widget(card)
         view.open()
+        card.opacity = 0
+        Animation(opacity=1, duration=.20, t='out_quad').start(card)
 
     @staticmethod
     def _open_repository(view):
@@ -966,6 +1054,8 @@ class GameScreen(FloatLayout):
                 button.size = (side, side)
         card.bind(size=fit_role_cards)
         view.open()
+        card.opacity = 0
+        Animation(opacity=1, duration=.20, t='out_quad').start(card)
         Clock.schedule_once(fit_role_cards, 0)
 
     def _begin_game(self, player_color, view):
