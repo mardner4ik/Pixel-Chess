@@ -26,6 +26,7 @@ class PixelChessApp(App):
 
     def build_config(self, config):
         config.setdefaults("audio", {"master_volume": "0.60"})
+        config.setdefaults("appearance", {"accent_mode": "system"})
 
     def build(self):
         font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "GoogleSansFlex.ttf")

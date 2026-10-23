@@ -39,16 +39,17 @@ class PixelButton(Button):
 
     def on_press(self):
         self._press_fill_color = list(self.fill_color)
-        if getattr(self, "_menu_primary", False) or self.text in {"Play", "Singleplayer", "Restart", "Resign"}:
-            factor = .12
-            self.fill_color = [min(1, c + (1 - c) * factor) for c in self.fill_color[:3]] + [self.fill_color[3]]
-        else:
-            self.fill_color = [min(1, c + (1 - c) * .08) for c in self.fill_color[:3]] + [self.fill_color[3]]
+        factor = .20 if (getattr(self, "_menu_primary", False)
+                         or self.text in {"Play", "Singleplayer", "Restart", "Resign"}) else .14
+        pressed = [min(1, c + (1 - c) * factor) for c in self.fill_color[:3]] + [self.fill_color[3]]
+        Animation.cancel_all(self, "fill_color")
+        Animation(fill_color=pressed, duration=.10, t="out_quad").start(self)
 
     def on_release(self):
         original = getattr(self, "_press_fill_color", None)
         if original is not None:
-            self.fill_color = original
+            Animation.cancel_all(self, "fill_color")
+            Animation(fill_color=original, duration=.18, t="out_quad").start(self)
             self._press_fill_color = None
 
     def on_touch_up(self, touch):
@@ -74,7 +75,7 @@ class PixelButton(Button):
             # Keep the effect short and property-light so touch feedback never
             # competes with board updates on low-end Android GPUs.
             Animation(ripple_radius=radius, duration=.20, t="out_quad").start(self)
-            self.ripple_alpha = .30
+            self.ripple_alpha = .42
         return super().on_touch_down(touch)
 
     def _fade_ripple(self, *_):
@@ -83,6 +84,19 @@ class PixelButton(Button):
 
 class MenuIconButton(PixelButton):
     pass
+
+
+class AccentChoiceButton(PixelButton):
+    selected = BooleanProperty(False)
+
+
+class MenuPanel(BoxLayout):
+    """A faded-out menu must let board touches pass through while disabled."""
+
+    def on_touch_down(self, touch):
+        if self.opacity <= .01:
+            return False
+        return super().on_touch_down(touch)
 
 
 class RoundCard(BoxLayout):
@@ -111,6 +125,12 @@ class RoundCard(BoxLayout):
 BOT_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chess-bot")
 _COORD_TEXTURES = {}
 _PIECE_TEXTURES = {}
+ACCENT_PALETTES = {
+    "blue": (.26, .43, .91, 1),
+    "green": (.15, .53, .35, 1),
+    "violet": (.52, .34, .78, 1),
+    "amber": (.76, .43, .04, 1),
+}
 
 
 class ChessBoard(Widget):
@@ -493,6 +513,9 @@ class GameScreen(FloatLayout):
         self._menu_animation = None
         self._menu_button_home_y = None
         self._menu_button_home_window = None
+        app = App.get_running_app()
+        self.accent_mode = (app.config.get("appearance", "accent_mode")
+                            if app is not None else "system")
         self.dark_mode = is_dark_mode()
         self._apply_theme(self.dark_mode, animate=False)
         self._theme_poll = Clock.schedule_interval(self._poll_theme, 4)
@@ -500,7 +523,6 @@ class GameScreen(FloatLayout):
         self._move_sound = None
         self._game_started = False
         self._side_picker = None
-        app = App.get_running_app()
         if app is not None:
             self.master_volume = app.config.getfloat("audio", "master_volume")
         self._volume_save_trigger = Clock.create_trigger(self._save_volume_setting, .5)
@@ -516,7 +538,7 @@ class GameScreen(FloatLayout):
         self.refresh()
 
     def _build_main_menu(self):
-        self.main_menu = BoxLayout(orientation='vertical', spacing=dp(12),
+        self.main_menu = MenuPanel(orientation='vertical', spacing=dp(12),
                                    padding=(dp(16), dp(16)), size_hint=(.90, None),
                                    height=dp(390), pos_hint={'center_x': .5, 'center_y': .5})
         self.main_menu_card = RoundCard(orientation='vertical', spacing=dp(8),
@@ -559,7 +581,8 @@ class GameScreen(FloatLayout):
             button.ripple_color = (*self.accent_color[:3], .34)
             if button._menu_primary:
                 button.fill_color = self.accent_color
-                button.text_color = (.12, .11, .10, 1) if self.dark_mode else (.99, .98, .95, 1)
+                button.text_color = self._accent_text_color(self.accent_color)
+                button.ripple_color = (*button.text_color[:3], .36)
             else:
                 button.fill_color = (.25, .25, .24, 1) if self.dark_mode else (.88, .87, .84, 1)
                 button.text_color = self.text_color
@@ -621,7 +644,7 @@ class GameScreen(FloatLayout):
 
     def _poll_theme(self, *_):
         dark = is_dark_mode()
-        accent = get_system_accent_color(dark)
+        accent = get_system_accent_color(dark) if self.accent_mode == "system" else None
         accent_changed = ((accent is None and getattr(self, "_using_system_accent", False))
                           or (accent is not None and tuple(self.accent_color) != tuple(accent)))
         if dark != self.dark_mode or accent_changed:
@@ -684,14 +707,19 @@ class GameScreen(FloatLayout):
 
         self.dark_mode = dark
         default_accent = ((.83, .65, .55, 1) if dark else (.65, .40, .31, 1))
-        system_accent = system_accent if system_accent is not None else get_system_accent_color(dark)
-        self._using_system_accent = system_accent is not None
+        system_accent = (system_accent if system_accent is not None else
+                         get_system_accent_color(dark) if self.accent_mode == "system" else None)
+        if self.accent_mode == "system":
+            selected_accent = system_accent or default_accent
+        else:
+            selected_accent = ACCENT_PALETTES.get(self.accent_mode, default_accent)
+        self._using_system_accent = self.accent_mode == "system" and system_accent is not None
         colors = ({"bg_color": (.10, .10, .10, 1), "surface_color": (.18, .18, .17, 1),
                    "text_color": (.94, .93, .90, 1), "muted_color": (.68, .67, .64, 1),
-                   "accent_color": system_accent or default_accent} if dark else
+                   "accent_color": selected_accent} if dark else
                   {"bg_color": (.94, .93, .90, 1), "surface_color": (.88, .87, .83, 1),
                    "text_color": (.12, .12, .12, 1), "muted_color": (.37, .37, .35, 1),
-                   "accent_color": system_accent or default_accent})
+                   "accent_color": selected_accent})
         if animate:
             Animation(**colors, duration=.28, t="out_quad").start(self)
         else:
@@ -707,20 +735,16 @@ class GameScreen(FloatLayout):
             for button in self._main_menu_buttons:
                 if button._menu_primary:
                     button.fill_color = colors["accent_color"]
-                    button.text_color = (.12, .11, .10, 1) if dark else (.99, .98, .95, 1)
+                    button.text_color = self._accent_text_color(colors["accent_color"])
+                    button.ripple_color = (*button.text_color[:3], .36)
                 else:
                     button.fill_color = (.25, .25, .24, 1) if dark else (.88, .87, .84, 1)
                     button.text_color = colors["text_color"]
-                button.ripple_color = (*colors["accent_color"][:3], .34)
-        palette_chip = getattr(self, "_settings_palette_chip", None)
-        if palette_chip is not None:
-            palette_chip.fill_color = colors["accent_color"]
-            palette_chip.text = "System" if self._using_system_accent else "Default"
-            palette_chip.text_color = ((.12, .11, .10, 1) if dark
-                                       else (.99, .98, .95, 1))
+                    button.ripple_color = (*colors["accent_color"][:3], .34)
         settings_slider = getattr(self, "_settings_slider", None)
         if settings_slider is not None:
             settings_slider.value_track_color = colors["accent_color"]
+        self._refresh_accent_choices(colors["accent_color"])
         for widget in self.walk():
             if isinstance(widget, PixelButton):
                 if getattr(widget, "_main_menu_button", False):
@@ -749,7 +773,7 @@ class GameScreen(FloatLayout):
                 if isinstance(widget, PixelButton):
                     if getattr(widget, "_result_action", "") == "restart":
                         widget.fill_color = colors["accent_color"]
-                        widget.text_color = (.12, .11, .10, 1) if dark else (.99, .98, .95, 1)
+                        widget.text_color = self._accent_text_color(colors["accent_color"])
                     else:
                         widget.fill_color = (.31, .31, .30, 1) if dark else (.85, .83, .79, 1)
                         widget.text_color = colors["text_color"]
@@ -760,6 +784,32 @@ class GameScreen(FloatLayout):
                 item.text_color = colors["text_color"]
         if self.menu_open:
             self._set_menu_button_active(True)
+
+    @staticmethod
+    def _accent_text_color(color):
+        luminance = .2126 * color[0] + .7152 * color[1] + .0722 * color[2]
+        return (.10, .10, .10, 1) if luminance >= .52 else (.99, .98, .95, 1)
+
+    def _refresh_accent_choices(self, active_color=None):
+        choices = getattr(self, "_settings_accent_buttons", ())
+        system_color = get_system_accent_color(self.dark_mode) or (
+            (.83, .65, .55, 1) if self.dark_mode else (.65, .40, .31, 1))
+        for button in choices:
+            mode = button._accent_mode
+            color = (active_color if mode == "system" else ACCENT_PALETTES[mode])
+            if mode == "system":
+                color = system_color
+            button.fill_color = color
+            button.text_color = self._accent_text_color(color)
+            button.selected = self.accent_mode == mode
+
+    def _set_accent_mode(self, mode):
+        self.accent_mode = mode if mode == "system" or mode in ACCENT_PALETTES else "system"
+        app = App.get_running_app()
+        if app is not None:
+            app.config.set("appearance", "accent_mode", self.accent_mode)
+            app.config.write()
+        self._apply_theme(self.dark_mode, animate=True)
 
     def _open_about_menu(self, *_):
         if self.menu_open:
@@ -832,8 +882,7 @@ class GameScreen(FloatLayout):
                 self._menu_button_home_y = button.y
                 self._menu_button_home_window = (self.width, self.height)
             button.fill_color = self.accent_color
-            button.text_color = ((.12, .11, .10, 1) if self.dark_mode
-                                 else (.99, .98, .95, 1))
+            button.text_color = self._accent_text_color(self.accent_color)
             button.ripple_color = (*self.accent_color[:3], .5)
             Animation(y=self._menu_button_home_y + dp(4), duration=.14,
                       t='out_quad').start(button)
@@ -880,7 +929,7 @@ class GameScreen(FloatLayout):
         keep.bind(on_release=view.dismiss)
         resign = PixelButton(text='Resign')
         resign.fill_color = self.accent_color
-        resign.text_color = (.12, .11, .10, 1) if self.dark_mode else (.99, .98, .95, 1)
+        resign.text_color = self._accent_text_color(self.accent_color)
         resign.bind(on_release=lambda *_: self._accept_resignation(view))
         actions.add_widget(keep)
         actions.add_widget(resign)
@@ -913,7 +962,7 @@ class GameScreen(FloatLayout):
     def _show_settings(self):
         from kivy.uix.slider import Slider
 
-        view = ModalView(size_hint=(.90, None), height=dp(300), auto_dismiss=True,
+        view = ModalView(size_hint=(.90, None), height=dp(330), auto_dismiss=True,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .38))
         card = RoundCard(orientation='vertical', padding=dp(20), spacing=dp(12),
@@ -933,19 +982,26 @@ class GameScreen(FloatLayout):
         self._settings_slider = slider
         slider.bind(value=lambda _slider, value: self._update_volume_controls(
             value, volume_label))
-        palette_row = BoxLayout(size_hint_y=None, height=dp(36), spacing=dp(10))
-        palette_label = Label(text='Color palette', color=self.text_color,
-                              font_size='14sp', halign='left')
+        palette_label = Label(text='Accent color', size_hint_y=None, height=dp(22),
+                              color=self.text_color, font_size='14sp', halign='left')
         palette_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        palette_chip = PixelButton(text='System' if getattr(self, '_using_system_accent', False)
-                                   else 'Default', size_hint_x=None, width=dp(96),
-                                   corner_radius=dp(12), disabled=True)
-        palette_chip.fill_color = self.accent_color
-        palette_chip.text_color = ((.12, .11, .10, 1) if self.dark_mode
-                                   else (.99, .98, .95, 1))
-        self._settings_palette_chip = palette_chip
-        palette_row.add_widget(palette_label)
-        palette_row.add_widget(palette_chip)
+        palette_row = BoxLayout(size_hint_y=None, height=dp(36), spacing=dp(4))
+        self._settings_accent_buttons = []
+        palette_options = [('system', 'Auto', None)] + [
+            (mode, mode.title(), color) for mode, color in ACCENT_PALETTES.items()]
+        for mode, caption, color in palette_options:
+            color = self.accent_color if mode == self.accent_mode else (
+                color if color is not None else get_system_accent_color(self.dark_mode) or
+                ((.83, .65, .55, 1) if self.dark_mode else (.65, .40, .31, 1)))
+            choice = AccentChoiceButton(text=caption, size_hint=(1, 1),
+                                        corner_radius=dp(10), font_size='10sp',
+                                        fill_color=color,
+                                        text_color=self._accent_text_color(color),
+                                        selected=mode == self.accent_mode)
+            choice._accent_mode = mode
+            choice.bind(on_release=lambda *_args, selected=mode: self._set_accent_mode(selected))
+            self._settings_accent_buttons.append(choice)
+            palette_row.add_widget(choice)
         close = PixelButton(text='Done', size_hint_y=None, height=dp(46))
         close.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
         close.text_color = self.text_color
@@ -954,6 +1010,7 @@ class GameScreen(FloatLayout):
         card.add_widget(heading)
         card.add_widget(volume_label)
         card.add_widget(slider)
+        card.add_widget(palette_label)
         card.add_widget(palette_row)
         card.add_widget(close)
         view.add_widget(card)
@@ -1157,7 +1214,7 @@ class GameScreen(FloatLayout):
             restart = PixelButton(text='Restart')
             restart._result_action = 'restart'
             restart.fill_color = self.accent_color
-            restart.text_color = (.12, .11, .10, 1) if self.dark_mode else (.99, .98, .95, 1)
+            restart.text_color = self._accent_text_color(self.accent_color)
             restart.ripple_color = (*self.accent_color[:3], .34)
             restart.bind(on_release=lambda *_: self.new_game())
             actions.add_widget(home)

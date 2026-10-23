@@ -9,7 +9,7 @@ A minimalist, mobile-first chess game built with [Kivy](https://kivy.org/). Choo
 - Responsive touch controls, legal move hints, and animated moves
 - Google Sans Flex typography inspired by the Pixel interface
 - Main menu with Play, Settings, and About; Multiplayer is shown as a future feature
-- Android 12+ wallpaper-derived system accent colors, with a desktop and older-Android fallback
+- Android 12+ wallpaper-derived system accent colors, plus selectable palettes and a fallback for older Android and desktop
 - Custom white and black chess piece artwork shipped as PNG assets with SVG source files
 - Choose to play as White or Black at the start of each game
 - Kevin MacLeod's 3:30 piano track, a move sound effect, and a saved master volume setting
@@ -24,7 +24,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-From the main menu, choose **Play → Singleplayer**, then select White or Black. Tap a piece to show its legal moves, then tap a destination, or drag a piece to a square. The in-game menu provides Settings, About, and **Resign**. After a game ends, choose **Main menu** or **Restart**. Multiplayer is visible but disabled while it is being developed.
+From the main menu, choose **Play → Singleplayer**, then select White or Black. Tap a piece to show its legal moves, then tap a destination, or drag a piece to a square. Settings lets you choose the system accent or a built-in palette. The in-game menu provides Settings, About, and **Resign**. After a game ends, choose **Main menu** or **Restart**. Multiplayer is visible but disabled while it is being developed.
 
 ## Build for Android
 
