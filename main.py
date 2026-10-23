@@ -23,6 +23,9 @@ from chess_app.ui.game_screen import GameScreen
 class PixelChessApp(App):
     title = "PIXEL CHESS"
 
+    def build_config(self, config):
+        config.setdefaults("audio", {"master_volume": "0.60"})
+
     def build(self):
         Window.clearcolor = get_color_from_hex("#111111")
         Builder.load_file("chess_app/ui/theme.kv")

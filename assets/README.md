@@ -1,6 +1,7 @@
 # App assets
 
-- `ambient.wav` — original quiet ambient soundtrack used by the game.
+- `ambient.wav` — original 64-second ambient soundtrack used by the game.
+- `move.wav` — short, soft wooden move sound effect.
 - `pixelchess-icon.png` / `pixelchess-icon.svg` — application icon.
 - `presplash.jpg` / `presplash.svg` — Android launch screen artwork.
 - `github-mark.svg` / `github-mark.png` — GitHub mark for the About button in the light theme.

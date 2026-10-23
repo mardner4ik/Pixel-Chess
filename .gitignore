@@ -17,3 +17,6 @@ bin/
 .DS_Store
 Thumbs.db
 
+
+# Local Kivy application settings
+pixelchess.ini

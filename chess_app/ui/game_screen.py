@@ -5,6 +5,7 @@ import time
 import webbrowser
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from kivy.app import App
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.animation import Animation
@@ -161,7 +162,8 @@ class ChessBoard(Widget):
             touch.ud["chess_start_pos"] = (touch.x, touch.y)
             board = self.screen.engine.board
             piece = board.piece_at(square)
-            can_drag = bool(piece and piece.color == chess.WHITE and board.turn == chess.WHITE)
+            can_drag = bool(piece and piece.color == self.screen.player_color
+                            and board.turn == self.screen.player_color)
             touch.ud["chess_piece_start"] = can_drag
             self._press_square = square
             self._press_piece = piece if can_drag else None
@@ -426,6 +428,8 @@ class GameScreen(FloatLayout):
     text_color = ColorProperty((.12, .12, .12, 1))
     muted_color = ColorProperty((.37, .37, .35, 1))
     accent_color = ColorProperty((.65, .40, .31, 1))
+    player_color = BooleanProperty(chess.WHITE)
+    master_volume = NumericProperty(.60)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -439,13 +443,21 @@ class GameScreen(FloatLayout):
         self._apply_theme(self.dark_mode, animate=False)
         self._theme_poll = Clock.schedule_interval(self._poll_theme, 4)
         self._background_music = None
-        Clock.schedule_once(self._start_background_music, 0)
+        self._move_sound = None
+        self._game_started = False
+        self._side_picker = None
+        app = App.get_running_app()
+        if app is not None:
+            self.master_volume = app.config.getfloat("audio", "master_volume")
+        self._volume_save_trigger = Clock.create_trigger(self._save_volume_setting, .5)
+        Clock.schedule_once(self._start_audio, 0)
         self.menu_button = self.ids.menu_button
         self.menu_button.bind(on_release=self._open_about_menu)
         self.board_widget = ChessBoard(self, size_hint=(None, None))
         self.ids.board_container.add_widget(self.board_widget)
         self.bind(size=self._fit_board)
         Clock.schedule_once(self._fit_board, 0)
+        Clock.schedule_once(self._show_side_picker, .1)
         self.refresh()
 
     def _poll_theme(self, *_):
@@ -453,7 +465,7 @@ class GameScreen(FloatLayout):
         if dark != self.dark_mode:
             self._apply_theme(dark)
 
-    def _start_background_music(self, *_):
+    def _start_audio(self, *_):
         # Force SDL2 before Kivy starts so WAV playback does not depend on
         # optional GStreamer decoder plugins installed by the operating system.
         try:
@@ -461,23 +473,49 @@ class GameScreen(FloatLayout):
             from kivy.logger import Logger
             from kivy.resources import resource_find
 
-            bundled_source = Path(__file__).resolve().parents[2] / "assets" / "ambient.wav"
-            source = str(bundled_source) if bundled_source.is_file() else resource_find(
-                "assets/ambient.wav")
-            if source is None:
-                Logger.warning("PixelChess: assets/ambient.wav was not found")
-                return
-            self._background_music = SoundLoader.load(source)
-            if self._background_music is None:
-                Logger.warning("PixelChess: no audio provider could load assets/ambient.wav")
-                return
-            self._background_music.loop = True
-            self._background_music.volume = .16
-            self._background_music.play()
+            assets_dir = Path(__file__).resolve().parents[2] / "assets"
+            for filename, target in (("ambient.wav", "music"), ("move.wav", "move")):
+                bundled_source = assets_dir / filename
+                source = str(bundled_source) if bundled_source.is_file() else resource_find(
+                    f"assets/{filename}")
+                if source is None:
+                    Logger.warning(f"PixelChess: assets/{filename} was not found")
+                    continue
+                sound = SoundLoader.load(source)
+                if sound is None:
+                    Logger.warning(f"PixelChess: no audio provider could load assets/{filename}")
+                    continue
+                if target == "music":
+                    self._background_music = sound
+                    sound.loop = True
+                    sound.volume = self.master_volume * .65
+                    sound.play()
+                else:
+                    self._move_sound = sound
+                    sound.volume = self.master_volume * .85
         except Exception as error:
             from kivy.logger import Logger
             Logger.warning(f"PixelChess: background music could not start: {error}")
             self._background_music = None
+
+    def _set_master_volume(self, value):
+        self.master_volume = max(0.0, min(1.0, value))
+        if self._background_music is not None:
+            self._background_music.volume = self.master_volume * .65
+        if self._move_sound is not None:
+            self._move_sound.volume = self.master_volume * .85
+        self._volume_save_trigger()
+
+    def _save_volume_setting(self, *_):
+        app = App.get_running_app()
+        if app is not None:
+            app.config.set("audio", "master_volume", f"{self.master_volume:.3f}")
+            app.config.write()
+
+    def _play_move_sound(self):
+        if self._move_sound is not None and self.master_volume > 0:
+            self._move_sound.stop()
+            self._move_sound.play()
 
     def _apply_theme(self, dark, animate=True):
         from kivy.core.window import Window
@@ -518,7 +556,8 @@ class GameScreen(FloatLayout):
                     widget.ripple_color = ((.90, .89, .86, .42) if dark else (.25, .25, .23, .30))
         if self.menu_popup is not None and hasattr(self.menu_popup, "_surface_color"):
             self.menu_popup._surface_color.rgba = ((.17, .17, .16, 1) if dark else (.98, .97, .94, 1))
-            self.menu_popup._item.color = colors["text_color"]
+            for item in getattr(self.menu_popup, "_items", []):
+                item.text_color = colors["text_color"]
 
     def _open_about_menu(self, *_):
         if self.menu_open:
@@ -527,24 +566,30 @@ class GameScreen(FloatLayout):
         from kivy.graphics import Color, RoundedRectangle
         self.menu_open = True
         self.menu_popup = self.ids.popup_layer
-        self.menu_popup.size = (dp(190), dp(58))
+        self.menu_popup.size = (dp(190), dp(112))
+        self.menu_popup.padding = dp(5)
+        self.menu_popup.spacing = dp(3)
         self.menu_popup.clear_widgets()
         self.menu_popup.canvas.before.clear()
         with self.menu_popup.canvas.before:
             self.menu_popup._surface_color = Color(*((.17, .17, .16, 1) if self.dark_mode else (.98, .97, .94, 1)))
-            self.menu_popup._surface = RoundedRectangle(pos=self.menu_popup.pos, size=(dp(190), dp(58)),
+            self.menu_popup._surface = RoundedRectangle(pos=self.menu_popup.pos, size=(dp(190), dp(112)),
                                                         radius=[dp(6)])
         self.menu_popup.bind(pos=lambda w, p: setattr(w._surface, 'pos', p),
                              size=lambda w, s: setattr(w._surface, 'size', s))
-        item = PixelButton(text='About', font_size='15sp', size_hint=(1, 1),
-                           fill_color=(.23, .23, .22, 1) if self.dark_mode else (.91, .90, .87, 1),
-                           text_color=self.text_color,
-                           ripple_color=(.88, .87, .84, .38) if self.dark_mode else (.24, .23, .21, .24),
-                           halign='center', valign='middle', padding=(0, 0))
-        item.bind(size=lambda w, s: setattr(w, 'text_size', s),
-                  on_release=lambda *_: Clock.schedule_once(lambda _dt: self._select_about(), .12))
-        self.menu_popup._item = item
-        self.menu_popup.add_widget(item)
+        self.menu_popup._items = []
+        for text, callback in (("Settings", self._select_settings),
+                               ("About", self._select_about)):
+            item = PixelButton(text=text, font_size='15sp', size_hint=(1, 1),
+                               fill_color=(.23, .23, .22, 1) if self.dark_mode else (.91, .90, .87, 1),
+                               text_color=self.text_color,
+                               ripple_color=(.88, .87, .84, .38) if self.dark_mode else (.24, .23, .21, .24),
+                               halign='center', valign='middle', padding=(0, 0))
+            item.bind(size=lambda w, s: setattr(w, 'text_size', s),
+                      on_release=lambda *_args, action=callback: Clock.schedule_once(
+                          lambda _dt: action(), .12))
+            self.menu_popup._items.append(item)
+            self.menu_popup.add_widget(item)
         Clock.schedule_once(self._position_about_menu, 0)
 
     def _position_about_menu(self, *_):
@@ -559,7 +604,7 @@ class GameScreen(FloatLayout):
             y = button.top + dp(6)
         self.popup_position = [x, y]
         menu._surface.pos = (x, y)
-        menu._surface.size = (dp(190), dp(58))
+        menu._surface.size = (dp(190), dp(112))
 
     def _close_about_menu(self):
         if self.menu_popup is not None:
@@ -572,6 +617,46 @@ class GameScreen(FloatLayout):
     def _select_about(self):
         self._close_about_menu()
         self._show_about()
+
+    def _select_settings(self):
+        self._close_about_menu()
+        self._show_settings()
+
+    def _show_settings(self):
+        from kivy.uix.slider import Slider
+
+        view = ModalView(size_hint=(.90, None), height=dp(250), auto_dismiss=True,
+                         background='', background_color=(0, 0, 0, 0),
+                         overlay_color=(0, 0, 0, .38))
+        card = RoundCard(orientation='vertical', padding=dp(22), spacing=dp(14),
+                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
+                         corner_radius=dp(30))
+        heading = Label(text='Settings', size_hint_y=None, height=dp(40), bold=True,
+                        font_size='22sp', color=self.text_color, halign='left')
+        heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
+        volume_label = Label(text=f'Master volume  {round(self.master_volume * 100)}%',
+                             size_hint_y=None, height=dp(28), color=self.text_color,
+                             font_size='15sp', halign='left')
+        volume_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
+        slider = Slider(min=0, max=1, value=self.master_volume, size_hint_y=None,
+                        height=dp(34), cursor_size=(dp(24), dp(24)))
+        slider.bind(value=lambda _slider, value: self._update_volume_controls(
+            value, volume_label))
+        close = PixelButton(text='Done', size_hint_y=None, height=dp(46))
+        close.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
+        close.text_color = self.text_color
+        close.ripple_color = (*self.accent_color[:3], .34)
+        close.bind(on_release=view.dismiss)
+        card.add_widget(heading)
+        card.add_widget(volume_label)
+        card.add_widget(slider)
+        card.add_widget(close)
+        view.add_widget(card)
+        view.open()
+
+    def _update_volume_controls(self, value, label):
+        label.text = f'Master volume  {round(value * 100)}%'
+        self._set_master_volume(value)
 
     def on_touch_down(self, touch):
         if self.menu_open and self.menu_popup and not self.menu_popup.collide_point(*touch.pos):
@@ -640,14 +725,17 @@ class GameScreen(FloatLayout):
         self.board_widget.pos = (box.center_x - side / 2, box.center_y - side / 2)
 
     def choose_square(self, square):
+        if not self._game_started:
+            return
         board = self.engine.board
-        if board.turn != chess.WHITE:
+        if board.turn != self.player_color:
             return
         if self.selection is not None:
             candidates = [m for m in self.engine.legal_moves_from(self.selection) if m.to_square == square]
             if candidates:
                 move = next((m for m in candidates if m.promotion == chess.QUEEN), candidates[0])
                 self.engine.play(move)
+                self._play_move_sound()
                 self.selection = None
                 self.board_widget.selected = []
                 self.board_widget.targets = []
@@ -655,13 +743,13 @@ class GameScreen(FloatLayout):
                 self.board_widget._drop_start_pos = None
                 self.board_widget.animate_move(move, start_pos=drop_start)
                 self.refresh()
-                if not self.engine.status()[1]:
+                if self.engine.board.turn != self.player_color and not self.engine.status()[1]:
                     Clock.schedule_once(self._start_bot, .30)
                 else:
                     self._finish_round()
                 return
         piece = board.piece_at(square)
-        if piece and piece.color == chess.WHITE and board.turn == chess.WHITE:
+        if piece and piece.color == self.player_color and board.turn == self.player_color:
             self.selection = square
             self.board_widget.selected = [square]
             self.board_widget.targets = [move.to_square for move in self.engine.legal_moves_from(square)]
@@ -672,7 +760,7 @@ class GameScreen(FloatLayout):
         self.board_widget.redraw()
 
     def _start_bot(self, *_):
-        if self.engine.board.turn == chess.BLACK and not self.engine.status()[1]:
+        if self._game_started and self.engine.board.turn != self.player_color and not self.engine.status()[1]:
             snapshot = self.engine.board.copy(stack=True)
             future = BOT_POOL.submit(self._calculate_bot_move, snapshot)
             future.add_done_callback(lambda result: Clock.schedule_once(lambda _dt: self._apply_bot_result(result), 0))
@@ -684,7 +772,7 @@ class GameScreen(FloatLayout):
         return engine.bot_move()
 
     def _apply_bot_result(self, future):
-        if self.engine.board.turn != chess.BLACK or self.engine.status()[1]:
+        if not self._game_started or self.engine.board.turn == self.player_color or self.engine.status()[1]:
             return
         try:
             move = future.result()
@@ -693,6 +781,7 @@ class GameScreen(FloatLayout):
             return
         if move is not None:
             self.engine.play(move)
+            self._play_move_sound()
             self.board_widget.selected = []
             self.board_widget.targets = []
             self.selection = None
@@ -703,6 +792,8 @@ class GameScreen(FloatLayout):
 
     def refresh(self):
         status, finished = self.engine.status()
+        if not finished and status != "CHECK":
+            status = "YOUR TURN" if self.engine.board.turn == self.player_color else "OPPONENT THINKING"
         self.status_text = status
         if hasattr(self, "board_widget"):
             last = self.engine.board.peek() if self.engine.board.move_stack else None
@@ -765,15 +856,59 @@ class GameScreen(FloatLayout):
         return f"{seconds // 60:02}:{seconds % 60:02}"
 
     def new_game(self):
+        self._game_started = False
+        if self.result_overlay is not None:
+            self.result_overlay.dismiss()
+        self.result_visible = False
+        Clock.schedule_once(self._show_side_picker, .12)
+
+    def _show_side_picker(self, *_):
+        if self._side_picker is not None and self._side_picker._is_open:
+            return
+        view = ModalView(size_hint=(.90, None), height=dp(230), auto_dismiss=False,
+                         background='', background_color=(0, 0, 0, 0),
+                         overlay_color=(0, 0, 0, .42))
+        card = RoundCard(orientation='vertical', padding=dp(22), spacing=dp(14),
+                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
+                         corner_radius=dp(30))
+        heading = Label(text='Choose your side', size_hint_y=None, height=dp(42),
+                        bold=True, font_size='22sp', color=self.text_color,
+                        halign='center')
+        heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
+        buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(12))
+        white_button = PixelButton(text='White')
+        black_button = PixelButton(text='Black')
+        for button in (white_button, black_button):
+            button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
+            button.text_color = self.text_color
+            button.ripple_color = (*self.accent_color[:3], .34)
+        white_button.bind(on_release=lambda *_: self._begin_game(chess.WHITE, view))
+        black_button.bind(on_release=lambda *_: self._begin_game(chess.BLACK, view))
+        buttons.add_widget(white_button)
+        buttons.add_widget(black_button)
+        card.add_widget(heading)
+        card.add_widget(buttons)
+        view.add_widget(card)
+        self._side_picker = view
+        view.open()
+
+    def _begin_game(self, player_color, view):
+        view.dismiss()
+        self._side_picker = None
         Animation.cancel_all(self.board_widget)
         self.board_widget.animating = False
         self.board_widget.previous_move = []
         self.board_widget.anim_progress = 1
         self.engine = ChessEngine()
+        self.player_color = bool(player_color)
+        self.board_widget.flipped = not self.player_color
         self.started_at = time.monotonic()
         self.result_visible = False
+        self._game_started = True
         self.selection = None
         self.board_widget.selected = []
         self.board_widget.targets = []
         self.refresh()
+        if self.engine.board.turn != self.player_color:
+            Clock.schedule_once(self._start_bot, .25)
 
