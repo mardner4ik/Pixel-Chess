@@ -1,0 +1,89 @@
+#:import dp kivy.metrics.dp
+#:import StencilPush kivy.graphics.StencilPush
+#:import StencilUse kivy.graphics.StencilUse
+#:import StencilUnUse kivy.graphics.StencilUnUse
+#:import StencilPop kivy.graphics.StencilPop
+<PixelButton>:
+    background_normal: ''
+    background_down: ''
+    background_color: (0, 0, 0, 0)
+    color: self.text_color
+    font_size: '15sp'
+    bold: True
+    canvas.before:
+        Color:
+            rgba: self.fill_color
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(24)]
+        Color:
+            rgba: (self.ripple_color[0], self.ripple_color[1], self.ripple_color[2], self.ripple_color[3] * self.ripple_alpha)
+        StencilPush
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(24)]
+        StencilUse
+        Ellipse:
+            pos: (self.ripple_x - self.ripple_radius, self.ripple_y - self.ripple_radius)
+            size: (self.ripple_radius * 2, self.ripple_radius * 2)
+        StencilUnUse
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(24)]
+        StencilPop
+<MenuIconButton>:
+    canvas.after:
+        Color:
+            rgba: self.text_color
+        Line:
+            points: self.x + dp(15), self.center_y + dp(6), self.x + dp(37), self.center_y + dp(6)
+            width: dp(2)
+            cap: 'square'
+        Line:
+            points: self.x + dp(15), self.center_y, self.x + dp(37), self.center_y
+            width: dp(2)
+            cap: 'square'
+        Line:
+            points: self.x + dp(15), self.center_y - dp(6), self.x + dp(37), self.center_y - dp(6)
+            width: dp(2)
+            cap: 'square'
+
+<GameScreen>:
+    padding: dp(10)
+    canvas.before:
+        Color:
+            rgba: root.bg_color
+        Rectangle:
+            pos: self.pos
+            size: self.size
+    AnchorLayout:
+        id: board_container
+        size_hint: 1, 1
+        pos: root.pos
+        size: root.size
+        anchor_x: 'center'
+        anchor_y: 'center'
+    Label:
+        text: root.status_text
+        color: root.muted_color
+        font_size: '11sp'
+        bold: True
+        size_hint: None, None
+        size: self.texture_size
+        pos_hint: {'x': .04, 'top': .97}
+    MenuIconButton:
+        id: menu_button
+        text: ''
+        size_hint: None, None
+        size: dp(52), dp(52)
+        pos_hint: {'right': .98, 'top': .98}
+        font_size: '21sp'
+    BoxLayout:
+        id: popup_layer
+        orientation: 'vertical'
+        size_hint: None, None
+        size: 0, 0
+        pos: root.popup_position

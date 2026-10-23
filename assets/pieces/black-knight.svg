@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<defs><style>.piece{fill:#393A3B;stroke:#E5E2DA;stroke-width:3.2;stroke-linejoin:round;stroke-linecap:round}.detail{fill:none;stroke:#191A1B;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.eye{fill:#E5E2DA;stroke:none}</style></defs>
+<ellipse cx="50" cy="88" rx="33" ry="5" fill="#000" opacity=".18"/>
+<path d="M15 80q0-3 4-3h62q4 0 4 3v7q0 3-4 3H19q-4 0-4-3z" fill="#191A1B" stroke="#E5E2DA" stroke-width="2.4"/>
+<path d="M20 80h60" stroke="#5D5E5F" stroke-width="2" stroke-linecap="round" opacity=".85"/>
+<g class="piece"><path d="M28 72c3-11 7-20 7-29 0-7-4-12-10-17 14-2 22 3 28 11 3-9 11-15 24-17-3 7-2 12 5 17 8 6 10 13 7 22l-4 13z"/><path class="detail" d="M34 62c12-3 23-2 37 1"/><circle class="eye" cx="63" cy="43" r="2.6"/></g>
+</svg>

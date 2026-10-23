@@ -1,0 +1,1 @@
+"""Pixel Chess application package."""

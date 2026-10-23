@@ -1,0 +1,49 @@
+# Pixel Chess
+
+A minimalist, mobile-first chess game built with [Kivy](https://kivy.org/). Play as White against a local search-based opponent, with legal move hints, drag-and-drop pieces, light and dark themes, and a quiet original ambient soundtrack.
+
+## Features
+
+- Standard chess rules and game-end detection powered by `python-chess`
+- Local opponent using iterative deepening, alpha-beta search, and a transposition table
+- Responsive touch controls, legal move hints, and animated moves
+- Custom white and black chess piece artwork shipped as PNG assets with SVG source files
+- Light and dark appearance follows the system theme
+- Quiet original ambient music, played at low volume when the audio backend is available
+
+## Run on desktop
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+pip install -r requirements.txt
+python main.py
+```
+
+The game starts immediately. Use the top-right menu for About. Tap a piece to show its legal moves, then tap a destination; you play White. After a game ends, choose **Restart** to begin again.
+
+## Build for Android
+
+This project uses Buildozer. Install its Android build dependencies, then run:
+
+```bash
+buildozer android debug
+```
+
+The app configuration is in [`buildozer.spec`](buildozer.spec). Generated build files and APKs are excluded from version control.
+
+## Project layout
+
+```text
+main.py                    app entry point
+chess_app/core/engine.py   chess rules and local opponent search
+chess_app/ui/game_screen.py board, interaction, menus, and dialogs
+chess_app/ui/theme.kv      Kivy interface styles
+chess_app/ui/system_theme.py system light/dark theme detection
+assets/ambient.wav         original, quiet ambient loop
+assets/pieces/             twelve piece images (PNG plus SVG source)
+```
+
+## License
+
+Pixel Chess is distributed under the GNU General Public License v3.0 only (GPL-3.0-only). See [LICENSE](LICENSE).
