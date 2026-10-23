@@ -38,19 +38,13 @@ class PixelButton(Button):
         self._pressed_touch = None
 
     def on_press(self):
-        self._press_fill_color = list(self.fill_color)
-        factor = .20 if (getattr(self, "_menu_primary", False)
-                         or self.text in {"Play", "Singleplayer", "Restart", "Resign"}) else .14
-        pressed = [min(1, c + (1 - c) * factor) for c in self.fill_color[:3]] + [self.fill_color[3]]
-        Animation.cancel_all(self, "fill_color")
-        Animation(fill_color=pressed, duration=.10, t="out_quad").start(self)
+        # Touch feedback is drawn with the shared ripple. Do not animate the
+        # button's base fill: menu actions may replace that fill while release
+        # callbacks are running (for example, the active menu state).
+        pass
 
     def on_release(self):
-        original = getattr(self, "_press_fill_color", None)
-        if original is not None:
-            Animation.cancel_all(self, "fill_color")
-            Animation(fill_color=original, duration=.18, t="out_quad").start(self)
-            self._press_fill_color = None
+        pass
 
     def on_touch_up(self, touch):
         result = super().on_touch_up(touch)
