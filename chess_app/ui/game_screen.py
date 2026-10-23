@@ -543,7 +543,7 @@ class GameScreen(FloatLayout):
         self.ids.board_container.disabled = True
         self.ids.menu_button.opacity = 0
         self.ids.menu_button.disabled = True
-        self.ids.status_text.opacity = 0
+        self.ids.status_label.opacity = 0
         Animation.cancel_all(self.main_menu, 'opacity')
         Animation(opacity=1, duration=.22, t='out_quad').start(self.main_menu)
 
@@ -555,7 +555,7 @@ class GameScreen(FloatLayout):
         fade.start(self.main_menu)
         self.ids.board_container.disabled = False
         self.ids.menu_button.disabled = False
-        self.ids.status_text.opacity = 1
+        self.ids.status_label.opacity = 1
         self._side_picker = None
         Clock.schedule_once(self._show_side_picker, .12)
 
