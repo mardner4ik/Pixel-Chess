@@ -127,15 +127,31 @@ class ChessBoard(Widget):
         self._drop_start_pos = None
         self._animation_start_pos = None
         self._drag_translate = None
+        self._board_group = Canvas()
         self._static_group = Canvas()
         self._moving_group = Canvas()
         self._move_translation = None
+        self._board_dirty = True
         # Coalesce bursts of state changes into a single canvas rebuild per frame.
         self._redraw_trigger = Clock.create_trigger(self._redraw_now, 0)
+        self.canvas.add(self._board_group)
         self.canvas.add(self._static_group)
         self.canvas.add(self._moving_group)
-        self.bind(pos=self.redraw, size=self.redraw)
+        self.bind(pos=self._geometry_changed, size=self._geometry_changed,
+                  flipped=self._orientation_changed)
         self.bind(anim_progress=self._update_animated_piece)
+        self.redraw()
+
+    def _geometry_changed(self, *_):
+        self._board_dirty = True
+        self.redraw()
+
+    def _orientation_changed(self, *_):
+        self._board_dirty = True
+        self.redraw()
+
+    def invalidate_board(self):
+        self._board_dirty = True
         self.redraw()
 
     def square_at(self, pos):
@@ -246,7 +262,7 @@ class ChessBoard(Widget):
         self._redraw_trigger()
 
     def _redraw_now(self, *_):
-        from kivy.graphics import Color, Rectangle, Line, Ellipse
+        from kivy.graphics import Color, Rectangle, Ellipse
         from kivy.utils import get_color_from_hex
 
         self._static_group.clear()
@@ -263,35 +279,63 @@ class ChessBoard(Widget):
         palette = ({"light": "#D7D4CD", "dark": "#777670", "select": "#A98A7B", "check": "#A77965"}
                    if self.screen.dark_mode else
                    {"light": "#F1EEE8", "dark": "#AAA9A3", "select": "#D9B7A8", "check": "#C58E78"})
+        if self._board_dirty:
+            self._draw_board_background(size, ox, oy, palette)
+            self._board_dirty = False
         with self._static_group:
+            # Only repaint changed-square overlays, legal targets, and live pieces.
+            for square in last:
+                self._draw_square_overlay(square, ox, oy, size,
+                                          "#D9B7A8" if not self.screen.dark_mode else "#A98A7B")
+            for square in selected:
+                self._draw_square_overlay(square, ox, oy, size, palette["select"])
+            if king is not None:
+                self._draw_square_overlay(king, ox, oy, size, palette["check"])
+            for square in targets:
+                x, y = self._piece_position(square, ox, oy, size)
+                Color(0.12, 0.12, 0.12, 0.40)
+                Ellipse(pos=(x + size * .39, y + size * .39),
+                        size=(size * .22, size * .22))
+            for square, piece in board.piece_map().items():
+                if square in self.previous_move or square == self._drag_square:
+                    continue
+                x, y = self._piece_position(square, ox, oy, size)
+                self._draw_piece(piece.piece_type, piece.color, x, y, size)
+        if self._drag_piece is not None:
+            self._render_drag_piece()
+        else:
+            self._draw_animated_piece()
+
+    def _draw_square_overlay(self, square, ox, oy, size, color):
+        from kivy.graphics import Color, Rectangle
+        from kivy.utils import get_color_from_hex
+
+        x, y = self._piece_position(square, ox, oy, size)
+        with self._static_group:
+            Color(*get_color_from_hex(color))
+            Rectangle(pos=(x, y), size=(size, size))
+
+    def _draw_board_background(self, size, ox, oy, palette):
+        from kivy.graphics import Color, Rectangle, Line
+        from kivy.core.text import Label as CoreLabel
+        from kivy.graphics import Rectangle as TextureRectangle
+        from kivy.utils import get_color_from_hex
+
+        self._board_group.clear()
+        with self._board_group:
             for rank in range(8):
                 for file in range(8):
-                    square = chess.square(7 - file, 7 - rank) if self.flipped else chess.square(file, rank)
                     x, y = ox + file * size, oy + rank * size
                     color = palette["light"] if (file + rank) % 2 == 0 else palette["dark"]
-                    if square in last:
-                        color = "#D9B7A8" if color == palette["light"] else "#BF9B8C"
-                    if square in selected:
-                        color = palette["select"]
-                    if square == king:
-                        color = palette["check"]
                     Color(*get_color_from_hex(color))
                     Rectangle(pos=(x, y), size=(size, size))
-                    if square in targets:
-                        Color(0.12, 0.12, 0.12, 0.40)
-                        Ellipse(pos=(x + size * .39, y + size * .39), size=(size * .22, size * .22))
-                    piece = board.piece_at(square)
-                    if piece and square not in self.previous_move and square != self._drag_square:
-                        self._draw_piece(piece.piece_type, piece.color, x, y, size)
-            # Quiet coordinate rail: helps orientation without adding a control panel.
             rail_color = (.28, .28, .27, .72) if self.screen.dark_mode else (.36, .35, .33, .72)
             Color(*rail_color)
             Line(rectangle=(ox, oy, size * 8, size * 8), width=1.15)
-            from kivy.core.text import Label as CoreLabel
+            text_color = (.91, .90, .87, .88) if self.screen.dark_mode else (.20, .20, .19, .78)
             for index in range(8):
                 file_char = chr(ord('a') + (7-index if self.flipped else index))
                 rank_char = str(8-index if not self.flipped else index+1)
-                text_color = (.91, .90, .87, .88) if self.screen.dark_mode else (.20, .20, .19, .78)
                 for text, center in ((file_char, (ox+(index+.5)*size, oy-dp(7))),
                                      (rank_char, (ox-dp(7), oy+(7.5-index)*size))):
                     key = (text, round(max(dp(8), size*.105), 2), text_color)
@@ -302,14 +346,9 @@ class ChessBoard(Widget):
                         texture = label.texture
                         _COORD_TEXTURES[key] = texture
                     Color(*text_color)
-                    from kivy.graphics import Rectangle as TextureRectangle
                     TextureRectangle(texture=texture,
-                                    pos=(center[0]-texture.width/2, center[1]-texture.height/2),
-                                    size=texture.size)
-        if self._drag_piece is not None:
-            self._render_drag_piece()
-        else:
-            self._draw_animated_piece()
+                                     pos=(center[0]-texture.width/2, center[1]-texture.height/2),
+                                     size=texture.size)
 
     def _piece_position(self, square, ox, oy, size):
         file, rank = chess.square_file(square), chess.square_rank(square)
@@ -542,8 +581,14 @@ class GameScreen(FloatLayout):
                     widget._github_icon.source = (
                         "assets/github-mark-light.png" if dark else "assets/github-mark.png")
                     widget._github_label.color = colors["text_color"]
+        side_picker = getattr(self, "_side_picker", None)
+        if side_picker is not None and side_picker._is_open:
+            for button, label in side_picker._role_choices:
+                button.fill_color = (.31, .31, .30, 1) if dark else (.85, .83, .79, 1)
+                button.text_color = colors["text_color"]
+                label.color = colors["text_color"]
         if hasattr(self, "board_widget"):
-            self.board_widget.redraw()
+            self.board_widget.invalidate_board()
         if self.result_overlay is not None:
             self.result_overlay._title_label.color = colors["text_color"]
             self.result_overlay._detail_label.color = colors["muted_color"]
@@ -665,7 +710,7 @@ class GameScreen(FloatLayout):
 
     def _show_about(self):
         self.show_info('About Pixel Chess',
-                       'A minimalist chess game for focused play. You play White against a local search-based opponent.\n\n'
+                       'A minimalist chess game for focused play. Choose either side to play against the local opponent.\n\n'
                        'HOW TO PLAY\nTap a piece, then tap one of its highlighted legal moves.\n\n'
                        'LICENSE\nGNU General Public License v3 (GPL-3.0).')
 
@@ -695,6 +740,12 @@ class GameScreen(FloatLayout):
         github.add_widget(github_row)
         github._github_icon = github_icon
         github._github_label = github_label
+        def position_github_contents(_widget, *_args):
+            github_row.size = (dp(108), dp(28))
+            github_row.pos = (github.x + (github.width - github_row.width) / 2,
+                              github.y + (github.height - github_row.height) / 2)
+        github.bind(pos=position_github_contents, size=position_github_contents)
+        position_github_contents(github)
         github.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
         github.text_color = self.text_color
         github.ripple_color = (*self.accent_color[:3], .34)
@@ -865,32 +916,56 @@ class GameScreen(FloatLayout):
     def _show_side_picker(self, *_):
         if self._side_picker is not None and self._side_picker._is_open:
             return
-        view = ModalView(size_hint=(.90, None), height=dp(230), auto_dismiss=False,
+        view = ModalView(size_hint=(.90, None), height=dp(300), auto_dismiss=False,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .42))
-        card = RoundCard(orientation='vertical', padding=dp(22), spacing=dp(14),
+        card = RoundCard(orientation='vertical', padding=dp(18), spacing=dp(12),
                          fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
                          corner_radius=dp(30))
-        heading = Label(text='Choose your side', size_hint_y=None, height=dp(42),
-                        bold=True, font_size='22sp', color=self.text_color,
+        heading = Label(text='Select Role', size_hint_y=None, height=dp(40),
+                        bold=True, font_size='21sp', color=self.text_color,
                         halign='center')
         heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        buttons = BoxLayout(size_hint_y=None, height=dp(54), spacing=dp(12))
-        white_button = PixelButton(text='White')
-        black_button = PixelButton(text='Black')
-        for button in (white_button, black_button):
+        buttons = BoxLayout(size_hint=(None, None), height=dp(164), spacing=dp(12),
+                            pos_hint={"center_x": .5})
+        choices = []
+        for color, title, icon_name in (
+                (chess.WHITE, "White", "white-king.png"),
+                (chess.BLACK, "Black", "black-king.png")):
+            button = PixelButton(text='', size_hint=(None, None))
             button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
             button.text_color = self.text_color
             button.ripple_color = (*self.accent_color[:3], .34)
-        white_button.bind(on_release=lambda *_: self._begin_game(chess.WHITE, view))
-        black_button.bind(on_release=lambda *_: self._begin_game(chess.BLACK, view))
-        buttons.add_widget(white_button)
-        buttons.add_widget(black_button)
+            icon = Image(source=f"assets/pieces/{icon_name}", fit_mode='contain')
+            label = Label(text=title, color=self.text_color, bold=True, font_size='15sp')
+            button.add_widget(icon)
+            button.add_widget(label)
+            def layout_choice(widget, *_args, piece_icon=icon, piece_label=label):
+                icon_size = min(dp(90), widget.width * .62, widget.height * .58)
+                piece_icon.size = (icon_size, icon_size)
+                piece_icon.pos = (widget.x + (widget.width - icon_size) / 2,
+                                  widget.y + widget.height - icon_size - dp(10))
+                piece_label.size = (widget.width - dp(12), dp(28))
+                piece_label.pos = (widget.x + dp(6), widget.y + dp(8))
+            button.bind(pos=layout_choice, size=layout_choice)
+            layout_choice(button)
+            button.bind(on_release=lambda *_args, side=color: self._begin_game(side, view))
+            buttons.add_widget(button)
+            choices.append((button, label))
         card.add_widget(heading)
         card.add_widget(buttons)
         view.add_widget(card)
+        view._role_choices = choices
         self._side_picker = view
+        def fit_role_cards(*_args):
+            available = card.width - dp(36)
+            side = max(dp(112), min(dp(164), (available - dp(12)) / 2))
+            buttons.size = (side * 2 + dp(12), side)
+            for button, _label in choices:
+                button.size = (side, side)
+        card.bind(size=fit_role_cards)
         view.open()
+        Clock.schedule_once(fit_role_cards, 0)
 
     def _begin_game(self, player_color, view):
         view.dismiss()
