@@ -1,6 +1,6 @@
 # App assets
 
-- `ambient.wav` — original 128-second ambient soundtrack used by the game.
+- `ambient.wav` — 3:30 “Friday Morning” piano track by Kevin MacLeod, converted to mono WAV for playback; see the attribution in the project README.
 - `move.wav` — short, soft wooden move sound effect.
 - `pixelchess-icon.png` / `pixelchess-icon.svg` — application icon.
 - `presplash.jpg` / `presplash.svg` — Android launch screen artwork.

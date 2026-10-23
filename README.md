@@ -1,6 +1,6 @@
 # Pixel Chess
 
-A minimalist, mobile-first chess game built with [Kivy](https://kivy.org/). Choose White or Black and play against a local search-based opponent, with legal move hints, drag-and-drop pieces, light and dark themes, a varied original soundtrack, and move sounds.
+A minimalist, mobile-first chess game built with [Kivy](https://kivy.org/). Choose White or Black and play against a local search-based opponent, with legal move hints, drag-and-drop pieces, light and dark themes, licensed piano music, and move sounds.
 
 ## Features
 
@@ -9,7 +9,7 @@ A minimalist, mobile-first chess game built with [Kivy](https://kivy.org/). Choo
 - Responsive touch controls, legal move hints, and animated moves
 - Custom white and black chess piece artwork shipped as PNG assets with SVG source files
 - Choose to play as White or Black at the start of each game
-- Original 128-second ambient music, move sound effects, and a saved master volume setting
+- Kevin MacLeod's 3:30 piano track, a move sound effect, and a saved master volume setting
 - Light and dark appearance follows the system theme
 
 ## Run on desktop
@@ -41,7 +41,7 @@ chess_app/core/engine.py   chess rules and local opponent search
 chess_app/ui/game_screen.py board, interaction, menus, and dialogs
 chess_app/ui/theme.kv      Kivy interface styles
 chess_app/ui/system_theme.py system light/dark theme detection
-assets/ambient.wav         original 128-second ambient loop
+assets/ambient.wav         licensed 3:30 piano soundtrack
 assets/move.wav            soft move sound effect
 assets/pieces/             twelve piece images (PNG plus SVG source)
 ```
@@ -53,6 +53,9 @@ Pixel Chess is distributed under the GNU General Public License v3.0 only (GPL-3
 ## Authors and credits
 
 - **[@mardner4ik](https://github.com/mardner4ik)** — project author and maintainer.
-- **OpenAI Codex** — AI development assistance and original chess-piece artwork, soundtrack, and move sound created for this project at the maintainer's direction.
+- **Kevin MacLeod** — composer of “Friday Morning,” the piano track used in the game. It is provided under CC BY 4.0 with attribution below.
+- **OpenAI Codex** — AI development assistance; original chess-piece artwork and move sound were created for the project at the maintainer's direction.
 - **GitHub** — the GitHub mark in About is GitHub's brand asset.
 - The app uses [Kivy](https://kivy.org/) for its interface and [python-chess](https://python-chess.readthedocs.io/) for chess rules.
+
+Music attribution: “Friday Morning” Kevin MacLeod ([incompetech.com](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1100224)), licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/). The source MP3 was converted to mono 22.05 kHz WAV for app playback; the composition is unchanged.

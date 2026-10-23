@@ -712,6 +712,7 @@ class GameScreen(FloatLayout):
         self.show_info('About Pixel Chess',
                        'A minimalist chess game for focused play. Choose either side to play against the local opponent.\n\n'
                        'HOW TO PLAY\nTap a piece, then tap one of its highlighted legal moves.\n\n'
+                       'MUSIC\nFriday Morning — Kevin MacLeod (CC BY 4.0).\n\n'
                        'LICENSE\nGNU General Public License v3 (GPL-3.0).')
 
     def show_info(self, title, message):
@@ -916,17 +917,17 @@ class GameScreen(FloatLayout):
     def _show_side_picker(self, *_):
         if self._side_picker is not None and self._side_picker._is_open:
             return
-        view = ModalView(size_hint=(.90, None), height=dp(300), auto_dismiss=False,
+        view = ModalView(size_hint=(.82, None), height=dp(218), auto_dismiss=False,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .42))
-        card = RoundCard(orientation='vertical', padding=dp(18), spacing=dp(12),
+        card = RoundCard(orientation='vertical', padding=dp(14), spacing=dp(10),
                          fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
-                         corner_radius=dp(30))
-        heading = Label(text='Select Role', size_hint_y=None, height=dp(40),
-                        bold=True, font_size='21sp', color=self.text_color,
+                         corner_radius=dp(26))
+        heading = Label(text='Select Role', size_hint_y=None, height=dp(34),
+                        bold=True, font_size='19sp', color=self.text_color,
                         halign='center')
         heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        buttons = BoxLayout(size_hint=(None, None), height=dp(164), spacing=dp(12),
+        buttons = BoxLayout(size_hint=(None, None), height=dp(124), spacing=dp(12),
                             pos_hint={"center_x": .5})
         choices = []
         for color, title, icon_name in (
@@ -941,12 +942,12 @@ class GameScreen(FloatLayout):
             button.add_widget(icon)
             button.add_widget(label)
             def layout_choice(widget, *_args, piece_icon=icon, piece_label=label):
-                icon_size = min(dp(90), widget.width * .62, widget.height * .58)
+                icon_size = min(dp(72), widget.width * .62, widget.height * .56)
                 piece_icon.size = (icon_size, icon_size)
                 piece_icon.pos = (widget.x + (widget.width - icon_size) / 2,
-                                  widget.y + widget.height - icon_size - dp(10))
-                piece_label.size = (widget.width - dp(12), dp(28))
-                piece_label.pos = (widget.x + dp(6), widget.y + dp(8))
+                                  widget.y + widget.height - icon_size - dp(8))
+                piece_label.size = (widget.width - dp(12), dp(24))
+                piece_label.pos = (widget.x + dp(6), widget.y + dp(6))
             button.bind(pos=layout_choice, size=layout_choice)
             layout_choice(button)
             button.bind(on_release=lambda *_args, side=color: self._begin_game(side, view))
@@ -959,7 +960,7 @@ class GameScreen(FloatLayout):
         self._side_picker = view
         def fit_role_cards(*_args):
             available = card.width - dp(36)
-            side = max(dp(112), min(dp(164), (available - dp(12)) / 2))
+            side = max(dp(104), min(dp(124), (available - dp(12)) / 2))
             buttons.size = (side * 2 + dp(12), side)
             for button, _label in choices:
                 button.size = (side, side)
