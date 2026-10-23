@@ -903,25 +903,28 @@ class GameScreen(FloatLayout):
             self._confirm_resignation()
 
     def _confirm_resignation(self):
-        view = ModalView(size_hint=(.90, None), height=dp(222), auto_dismiss=True,
+        view = ModalView(size_hint=(.90, None), height=dp(172), auto_dismiss=True,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .42))
-        card = RoundCard(orientation='vertical', padding=dp(20), spacing=dp(12),
+        card = RoundCard(orientation='vertical', padding=(dp(20), dp(12), dp(20), dp(8)), spacing=dp(10),
                          fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
-                         corner_radius=dp(26))
-        heading = Label(text='Resign game?', size_hint_y=None, height=dp(38),
-                        bold=True, font_size='21sp', color=self.text_color, halign='left')
+                         corner_radius=dp(24))
+        heading = Label(text='Resign this game?', size_hint_y=None, height=dp(34),
+                        bold=True, font_size='20sp', color=self.text_color, halign='left')
         heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        message = Label(text='The game will end and your opponent will win.',
-                        size_hint_y=None, height=dp(42), color=self.muted_color,
+        message = Label(text='Your opponent will win the game.',
+                        size_hint_y=None, height=dp(36), color=self.muted_color,
                         font_size='14sp', halign='left')
         message.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        actions = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(10))
-        keep = PixelButton(text='Keep playing')
+        actions = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(8))
+        actions.add_widget(Widget())
+        keep = PixelButton(text='Cancel', size_hint=(None, 1), width=dp(112),
+                           corner_radius=dp(12), font_size='14sp')
         keep.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
         keep.text_color = self.text_color
         keep.bind(on_release=view.dismiss)
-        resign = PixelButton(text='Resign')
+        resign = PixelButton(text='Resign', size_hint=(None, 1), width=dp(96),
+                             corner_radius=dp(12), font_size='14sp')
         resign.fill_color = self.accent_color
         resign.text_color = self._accent_text_color(self.accent_color)
         resign.bind(on_release=lambda *_: self._accept_resignation(view))
@@ -931,7 +934,7 @@ class GameScreen(FloatLayout):
         card.add_widget(message)
         card.add_widget(actions)
         view.add_widget(card)
-        self._open_dialog_near_top(view)
+        self._open_dialog_near_top(view, card)
         card.opacity = 0
         Animation(opacity=1, duration=.20, t='out_quad').start(card)
 
@@ -943,23 +946,29 @@ class GameScreen(FloatLayout):
         self.result_detail = f'Opponent wins   ·   {len(self.engine.board.move_stack)} plies   ·   {self._elapsed_text()}'
         self.result_visible = True
 
-    @staticmethod
-    def _align_dialog_near_top(view, *_):
-        if view._is_open:
-            from kivy.core.window import Window
-            view.top = Window.height - dp(12)
-
-    def _open_dialog_near_top(self, view):
+    def _open_dialog_near_top(self, view, card):
+        # ModalView is an AnchorLayout and centers its direct child. Put the
+        # card in a full-screen FloatLayout so its top pos_hint can take effect.
+        width_hint = view.size_hint_x or .90
+        card_height = view.height
+        view.size_hint = (1, 1)
+        card.size_hint = (width_hint, None)
+        card.height = card_height
+        card.pos_hint = {"center_x": .5, "top": .985}
+        view.remove_widget(card)
+        container = FloatLayout(size_hint=(1, 1))
+        container.add_widget(card)
+        view.add_widget(container)
+        view._dialog_container = container
         view.open()
-        Clock.schedule_once(lambda dt: self._align_dialog_near_top(view), 0)
 
     def _show_settings(self):
         from kivy.uix.slider import Slider
 
-        view = ModalView(size_hint=(.90, None), height=dp(330), auto_dismiss=True,
+        view = ModalView(size_hint=(.90, None), height=dp(300), auto_dismiss=True,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .38))
-        card = RoundCard(orientation='vertical', padding=dp(20), spacing=dp(12),
+        card = RoundCard(orientation='vertical', padding=(dp(20), dp(14), dp(20), dp(8)), spacing=dp(12),
                          fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
                          corner_radius=dp(30))
         heading = Label(text='Settings', size_hint_y=None, height=dp(40), bold=True,
@@ -1008,7 +1017,7 @@ class GameScreen(FloatLayout):
         card.add_widget(palette_row)
         card.add_widget(close)
         view.add_widget(card)
-        self._open_dialog_near_top(view)
+        self._open_dialog_near_top(view, card)
         card.opacity = 0
         Animation(opacity=1, duration=.20, t='out_quad').start(card)
 
@@ -1032,7 +1041,7 @@ class GameScreen(FloatLayout):
         view = ModalView(size_hint=(.90, None), height=dp(390), auto_dismiss=True,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .38))
-        card = RoundCard(orientation='vertical', padding=dp(22), spacing=dp(12),
+        card = RoundCard(orientation='vertical', padding=(dp(22), dp(14), dp(22), dp(8)), spacing=dp(12),
                          fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
                          corner_radius=dp(30))
         heading = Label(text=title, size_hint_y=None, height=dp(42), bold=True,
@@ -1074,7 +1083,7 @@ class GameScreen(FloatLayout):
         card.add_widget(github)
         card.add_widget(close)
         view.add_widget(card)
-        self._open_dialog_near_top(view)
+        self._open_dialog_near_top(view, card)
         card.opacity = 0
         Animation(opacity=1, duration=.20, t='out_quad').start(card)
 
@@ -1193,7 +1202,7 @@ class GameScreen(FloatLayout):
             overlay = ModalView(size_hint=(.88, None), height=dp(260), auto_dismiss=False,
                                 background='', background_color=(0, 0, 0, 0),
                                 overlay_color=(.06, .06, .06, .48))
-            content = RoundCard(orientation='vertical', padding=dp(22), spacing=dp(12),
+            content = RoundCard(orientation='vertical', padding=(dp(22), dp(14), dp(22), dp(8)), spacing=dp(12),
                                 fill_color=(.15, .15, .14, 1) if self.dark_mode else (.96, .95, .92, 1),
                                 corner_radius=dp(28))
             title = Label(color=self.text_color, bold=True, font_size='23sp', size_hint_y=None, height=dp(44))
@@ -1225,7 +1234,7 @@ class GameScreen(FloatLayout):
         self.result_overlay._title_label.text = self.result_title
         self.result_overlay._detail_label.text = self.result_detail
         if not self.result_overlay._is_open:
-            self._open_dialog_near_top(self.result_overlay)
+            self._open_dialog_near_top(self.result_overlay, self.result_overlay._result_card)
 
     def _return_to_main_menu(self):
         self._game_started = False
@@ -1250,10 +1259,10 @@ class GameScreen(FloatLayout):
     def _show_side_picker(self, *_):
         if self._side_picker is not None and self._side_picker._is_open:
             return
-        view = ModalView(size_hint=(.82, None), height=dp(218), auto_dismiss=False,
+        view = ModalView(size_hint=(.82, None), height=dp(200), auto_dismiss=False,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .42))
-        card = RoundCard(orientation='vertical', padding=dp(14), spacing=dp(10),
+        card = RoundCard(orientation='vertical', padding=(dp(14), dp(12), dp(14), dp(8)), spacing=dp(8),
                          fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
                          corner_radius=dp(26))
         heading = Label(text='Select Role', size_hint_y=None, height=dp(34),
@@ -1298,7 +1307,7 @@ class GameScreen(FloatLayout):
             for button, _label in choices:
                 button.size = (side, side)
         card.bind(size=fit_role_cards)
-        self._open_dialog_near_top(view)
+        self._open_dialog_near_top(view, card)
         card.opacity = 0
         Animation(opacity=1, duration=.20, t='out_quad').start(card)
         Clock.schedule_once(fit_role_cards, 0)
