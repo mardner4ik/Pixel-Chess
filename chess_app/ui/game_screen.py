@@ -479,6 +479,8 @@ class GameScreen(FloatLayout):
         self.result_overlay = None
         self.menu_popup = None
         self._menu_animation = None
+        self._menu_button_home_y = None
+        self._menu_button_home_window = None
         self.dark_mode = is_dark_mode()
         self._apply_theme(self.dark_mode, animate=False)
         self._theme_poll = Clock.schedule_interval(self._poll_theme, 4)
@@ -503,16 +505,20 @@ class GameScreen(FloatLayout):
 
     def _build_main_menu(self):
         self.main_menu = BoxLayout(orientation='vertical', spacing=dp(12),
-                                   padding=(dp(20), dp(20)), size_hint=(.88, None),
-                                   height=dp(420), pos_hint={'center_x': .5, 'center_y': .5})
+                                   padding=(dp(16), dp(16)), size_hint=(.90, None),
+                                   height=dp(452), pos_hint={'center_x': .5, 'center_y': .5})
         self.main_menu_card = RoundCard(orientation='vertical', spacing=dp(8),
-                                        padding=(dp(20), dp(20)),
+                                        padding=(dp(20), dp(18)),
                                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
-                                        corner_radius=dp(28))
-        self._main_menu_title = Label(text='PIXEL CHESS', size_hint_y=None, height=dp(48),
-                                      font_size='30sp', bold=True, color=self.text_color)
-        self._main_menu_subtitle = Label(text='A quiet place for a thoughtful game', size_hint_y=None,
-                                         height=dp(28), font_size='14sp', color=self.muted_color)
+                                        corner_radius=dp(24))
+        self._main_menu_icon = Image(source=("assets/pieces/white-king.png" if self.dark_mode
+                                             else "assets/pieces/black-king.png"),
+                                     size_hint_y=None, height=dp(72), fit_mode='contain')
+        self._main_menu_title = Label(text='Pixel Chess', size_hint_y=None, height=dp(40),
+                                      font_size='29sp', bold=True, color=self.text_color)
+        self._main_menu_subtitle = Label(text='Play chess against a local opponent', size_hint_y=None,
+                                         height=dp(26), font_size='14sp', color=self.muted_color)
+        self.main_menu_card.add_widget(self._main_menu_icon)
         self.main_menu_card.add_widget(self._main_menu_title)
         self.main_menu_card.add_widget(self._main_menu_subtitle)
         self._main_menu_buttons = []
@@ -522,9 +528,16 @@ class GameScreen(FloatLayout):
                 ('Settings', self._show_settings, True),
                 ('About', self._show_about, True)):
             button = PixelButton(text=caption, size_hint_y=None, height=dp(48),
-                                 corner_radius=dp(0))
-            button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-            button.text_color = self.text_color
+                                 corner_radius=dp(15))
+            button._main_menu_button = True
+            button._menu_primary = caption == 'Singleplayer'
+            button.ripple_color = (*self.accent_color[:3], .34)
+            if button._menu_primary:
+                button.fill_color = self.accent_color
+                button.text_color = (.12, .11, .10, 1) if self.dark_mode else (.99, .98, .95, 1)
+            else:
+                button.fill_color = (.25, .25, .24, 1) if self.dark_mode else (.88, .87, .84, 1)
+                button.text_color = self.text_color
             button.disabled = not enabled
             if not enabled:
                 button.opacity = .48
@@ -640,13 +653,22 @@ class GameScreen(FloatLayout):
         Window.clearcolor = colors["bg_color"]
         if hasattr(self, "main_menu_card"):
             self.main_menu_card.fill_color = ((.16, .16, .15, 1) if dark else (.99, .98, .95, 1))
+            self._main_menu_icon.source = ("assets/pieces/white-king.png" if dark
+                                           else "assets/pieces/black-king.png")
             self._main_menu_title.color = colors["text_color"]
             self._main_menu_subtitle.color = colors["muted_color"]
             for button in self._main_menu_buttons:
-                button.fill_color = (.31, .31, .30, 1) if dark else (.85, .83, .79, 1)
-                button.text_color = colors["text_color"]
+                if button._menu_primary:
+                    button.fill_color = colors["accent_color"]
+                    button.text_color = (.12, .11, .10, 1) if dark else (.99, .98, .95, 1)
+                else:
+                    button.fill_color = (.25, .25, .24, 1) if dark else (.88, .87, .84, 1)
+                    button.text_color = colors["text_color"]
+                button.ripple_color = (*colors["accent_color"][:3], .34)
         for widget in self.walk():
             if isinstance(widget, PixelButton):
+                if getattr(widget, "_main_menu_button", False):
+                    continue
                 widget.fill_color = (.31, .31, .30, 1) if dark else (.85, .83, .79, 1)
                 widget.text_color = colors["text_color"]
                 widget.ripple_color = ((.90, .89, .86, .42) if dark else (.25, .25, .23, .30))
@@ -676,6 +698,8 @@ class GameScreen(FloatLayout):
             self.menu_popup._surface_color.rgba = ((.17, .17, .16, 1) if dark else (.98, .97, .94, 1))
             for item in getattr(self.menu_popup, "_items", []):
                 item.text_color = colors["text_color"]
+        if self.menu_open:
+            self._set_menu_button_active(True)
 
     def _open_about_menu(self, *_):
         if self.menu_open:
@@ -684,8 +708,8 @@ class GameScreen(FloatLayout):
         from kivy.graphics import Color, RoundedRectangle
         self.menu_open = True
         self.menu_popup = self.ids.popup_layer
-        popup_width = max(dp(280), self.width - dp(24))
-        popup_height = dp(132)
+        popup_width = min(dp(236), max(dp(200), self.width - dp(32)))
+        popup_height = dp(120)
         self.menu_popup.size = (popup_width, popup_height)
         self.menu_popup.padding = dp(0)
         self.menu_popup.spacing = dp(0)
@@ -700,7 +724,7 @@ class GameScreen(FloatLayout):
         self.menu_popup._items = []
         for text, callback in (("Settings", self._select_settings),
                                ("About", self._select_about),
-                               ("Main menu", self._select_main_menu)):
+                               ("Resign", self._select_resign)):
             item = PixelButton(text=text, font_size='15sp', size_hint=(1, 1), corner_radius=0,
                                fill_color=(.23, .23, .22, 1) if self.dark_mode else (.91, .90, .87, 1),
                                text_color=self.text_color,
@@ -712,6 +736,7 @@ class GameScreen(FloatLayout):
             self.menu_popup._items.append(item)
             self.menu_popup.add_widget(item)
         self._position_about_menu()
+        self._set_menu_button_active(True)
         self.menu_popup.opacity = 0
         Animation.cancel_all(self.menu_popup, 'opacity')
         Animation(opacity=1, duration=.18, t='out_quad').start(self.menu_popup)
@@ -722,7 +747,7 @@ class GameScreen(FloatLayout):
         button = self.menu_button
         menu = self.menu_popup
         # Both controls are direct children of the screen's FloatLayout.
-        x = (self.width - menu.width) / 2
+        x = max(dp(8), min(self.width - menu.width - dp(8), button.right - menu.width))
         y = button.y - menu.height - dp(8)
         if y < dp(8):
             y = button.top + dp(8)
@@ -737,6 +762,29 @@ class GameScreen(FloatLayout):
         self.menu_popup = None
         self.menu_open = False
         self.ids.popup_layer.size = (0, 0)
+        self._set_menu_button_active(False)
+
+    def _set_menu_button_active(self, active):
+        button = self.menu_button
+        Animation.cancel_all(button, 'y')
+        if active:
+            if self._menu_button_home_y is None or self._menu_button_home_window != (self.width, self.height):
+                self._menu_button_home_y = button.y
+                self._menu_button_home_window = (self.width, self.height)
+            button.fill_color = self.accent_color
+            button.text_color = ((.12, .11, .10, 1) if self.dark_mode
+                                 else (.99, .98, .95, 1))
+            button.ripple_color = (*self.accent_color[:3], .5)
+            Animation(y=self._menu_button_home_y + dp(4), duration=.14,
+                      t='out_quad').start(button)
+        else:
+            button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
+            button.text_color = self.text_color
+            button.ripple_color = ((.90, .89, .86, .42) if self.dark_mode
+                                   else (.25, .25, .23, .30))
+            if self._menu_button_home_y is not None:
+                Animation(y=self._menu_button_home_y, duration=.16,
+                          t='out_quad').start(button)
 
     def _select_about(self):
         self._close_about_menu()
@@ -746,10 +794,51 @@ class GameScreen(FloatLayout):
         self._close_about_menu()
         self._show_settings()
 
-    def _select_main_menu(self):
+    def _select_resign(self):
         self._close_about_menu()
+        if self._game_started:
+            self._confirm_resignation()
+
+    def _confirm_resignation(self):
+        view = ModalView(size_hint=(.90, None), height=dp(222), auto_dismiss=True,
+                         background='', background_color=(0, 0, 0, 0),
+                         overlay_color=(0, 0, 0, .42))
+        card = RoundCard(orientation='vertical', padding=dp(20), spacing=dp(12),
+                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
+                         corner_radius=dp(26))
+        heading = Label(text='Resign game?', size_hint_y=None, height=dp(38),
+                        bold=True, font_size='21sp', color=self.text_color, halign='left')
+        heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
+        message = Label(text='The game will end and your opponent will win.',
+                        size_hint_y=None, height=dp(42), color=self.muted_color,
+                        font_size='14sp', halign='left')
+        message.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
+        actions = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(10))
+        keep = PixelButton(text='Keep playing')
+        keep.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
+        keep.text_color = self.text_color
+        keep.bind(on_release=view.dismiss)
+        resign = PixelButton(text='Resign')
+        resign.fill_color = self.accent_color
+        resign.text_color = (.12, .11, .10, 1) if self.dark_mode else (.99, .98, .95, 1)
+        resign.bind(on_release=lambda *_: self._accept_resignation(view))
+        actions.add_widget(keep)
+        actions.add_widget(resign)
+        card.add_widget(heading)
+        card.add_widget(message)
+        card.add_widget(actions)
+        view.add_widget(card)
+        view.open()
+        card.opacity = 0
+        Animation(opacity=1, duration=.20, t='out_quad').start(card)
+
+    def _accept_resignation(self, view):
+        view.dismiss()
         self._game_started = False
-        self._show_main_menu()
+        self.status_text = 'YOU RESIGNED'
+        self.result_title = 'You resigned'
+        self.result_detail = f'Opponent wins   ·   {len(self.engine.board.move_stack)} plies   ·   {self._elapsed_text()}'
+        self.result_visible = True
 
     def _show_settings(self):
         from kivy.uix.slider import Slider
