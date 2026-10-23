@@ -948,13 +948,14 @@ class GameScreen(FloatLayout):
 
     def _open_dialog_near_top(self, view, card):
         # ModalView is an AnchorLayout and centers its direct child. Put the
-        # card in a full-screen FloatLayout so its top pos_hint can take effect.
+        # card in a full-screen FloatLayout so it stays centered independently
+        # of the dialog's internal padding and action layout.
         width_hint = view.size_hint_x or .90
         card_height = view.height
         view.size_hint = (1, 1)
         card.size_hint = (width_hint, None)
         card.height = card_height
-        card.pos_hint = {"center_x": .5, "top": .985}
+        card.pos_hint = {"center_x": .5, "center_y": .5}
         view.remove_widget(card)
         container = FloatLayout(size_hint=(1, 1))
         container.add_widget(card)
