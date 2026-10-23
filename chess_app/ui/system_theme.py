@@ -8,12 +8,38 @@ import sys
 from pathlib import Path
 
 
+def get_system_accent_color(dark: bool = False):
+    """Return Android 12+'s current wallpaper-derived accent as RGBA, if available."""
+    try:
+        from kivy.utils import platform as kivy_platform
+        if kivy_platform != "android" and sys.platform != "android":
+            return None
+        from jnius import autoclass
+
+        activity = autoclass("org.kivy.android.PythonActivity").mActivity
+        resources = activity.getResources()
+        color_name = "system_accent1_200" if dark else "system_accent1_600"
+        color_id = resources.getIdentifier(color_name, "color", "android")
+        if not color_id:
+            return None
+        color = int(resources.getColor(color_id)) & 0xFFFFFFFF
+        return (((color >> 16) & 255) / 255, ((color >> 8) & 255) / 255,
+                (color & 255) / 255, ((color >> 24) & 255) / 255)
+    except Exception:
+        return None
+
+
 def is_dark_mode() -> bool:
     override = os.environ.get("PIXEL_CHESS_THEME", "").lower()
     if override in {"dark", "light"}:
         return override == "dark"
 
-    if sys.platform == "android":
+    try:
+        from kivy.utils import platform as kivy_platform
+    except Exception:
+        kivy_platform = ""
+
+    if kivy_platform == "android" or sys.platform == "android":
         try:
             from jnius import autoclass
 

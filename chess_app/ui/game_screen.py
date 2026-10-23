@@ -20,7 +20,7 @@ from kivy.uix.image import Image
 from kivy.graphics import Canvas, PushMatrix, PopMatrix, Translate
 
 from chess_app.core.engine import ChessEngine
-from chess_app.ui.system_theme import is_dark_mode
+from chess_app.ui.system_theme import get_system_accent_color, is_dark_mode
 
 class PixelButton(Button):
     ripple_x = NumericProperty(0)
@@ -38,10 +38,18 @@ class PixelButton(Button):
         self._pressed_touch = None
 
     def on_press(self):
-        pass
+        self._press_fill_color = list(self.fill_color)
+        if getattr(self, "_menu_primary", False) or self.text in {"Play", "Singleplayer", "Restart", "Resign"}:
+            factor = .12
+            self.fill_color = [min(1, c + (1 - c) * factor) for c in self.fill_color[:3]] + [self.fill_color[3]]
+        else:
+            self.fill_color = [min(1, c + (1 - c) * .08) for c in self.fill_color[:3]] + [self.fill_color[3]]
 
     def on_release(self):
-        pass
+        original = getattr(self, "_press_fill_color", None)
+        if original is not None:
+            self.fill_color = original
+            self._press_fill_color = None
 
     def on_touch_up(self, touch):
         result = super().on_touch_up(touch)
@@ -122,6 +130,7 @@ class ChessBoard(Widget):
         self._drag_piece = None
         self._press_square = None
         self._press_piece = None
+        self._active_touch = None
         self._drag_touch_offset = (0, 0)
         self._drag_last_pos = None
         self._drag_moved = False
@@ -185,6 +194,7 @@ class ChessBoard(Widget):
             self._press_square = square
             self._press_piece = piece if can_drag else None
             self._drag_moved = False
+            self._active_touch = touch
             touch.grab(self)
         return True
 
@@ -199,7 +209,7 @@ class ChessBoard(Widget):
         return pos[0] - center[0], pos[1] - center[1]
 
     def on_touch_move(self, touch):
-        if touch.grab_current is not self:
+        if self._active_touch is not touch and touch.grab_current is not self:
             return super().on_touch_move(touch)
         start = touch.ud.get("chess_start_pos", (touch.x, touch.y))
         dx, dy = touch.x - start[0], touch.y - start[1]
@@ -220,8 +230,9 @@ class ChessBoard(Widget):
         return True
 
     def on_touch_up(self, touch):
-        if touch.grab_current is self:
-            touch.ungrab(self)
+        if self._active_touch is touch or touch.grab_current is self:
+            if touch.grab_current is self:
+                touch.ungrab(self)
             end_square = self.square_at(touch.pos)
             start_square = touch.ud.get("chess_start_square")
             dragged = self._drag_piece is not None and self._drag_moved
@@ -242,6 +253,7 @@ class ChessBoard(Widget):
             self._drag_last_pos = None
             self._press_square = None
             self._press_piece = None
+            self._active_touch = None
             self._drag_moved = False
             self._moving_group.clear()
             self._drag_translate = None
@@ -506,7 +518,7 @@ class GameScreen(FloatLayout):
     def _build_main_menu(self):
         self.main_menu = BoxLayout(orientation='vertical', spacing=dp(12),
                                    padding=(dp(16), dp(16)), size_hint=(.90, None),
-                                   height=dp(452), pos_hint={'center_x': .5, 'center_y': .5})
+                                   height=dp(390), pos_hint={'center_x': .5, 'center_y': .5})
         self.main_menu_card = RoundCard(orientation='vertical', spacing=dp(8),
                                         padding=(dp(20), dp(18)),
                                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
@@ -514,23 +526,36 @@ class GameScreen(FloatLayout):
         self._main_menu_icon = Image(source=("assets/pieces/white-king.png" if self.dark_mode
                                              else "assets/pieces/black-king.png"),
                                      size_hint_y=None, height=dp(72), fit_mode='contain')
-        self._main_menu_title = Label(text='Pixel Chess', size_hint_y=None, height=dp(40),
-                                      font_size='29sp', bold=True, color=self.text_color)
-        self._main_menu_subtitle = Label(text='Play chess against a local opponent', size_hint_y=None,
-                                         height=dp(26), font_size='14sp', color=self.muted_color)
+        self._main_menu_buttons = []
+        self._populate_main_menu("home")
+        self.main_menu.add_widget(self.main_menu_card)
+        self.add_widget(self.main_menu)
+
+    def _populate_main_menu(self, page):
+        self._main_menu_page = page
+        self.main_menu_card.clear_widgets()
+        self._main_menu_buttons = []
+        self._main_menu_title = Label(
+            text='Pixel Chess' if page == "home" else "Choose a mode",
+            size_hint_y=None, height=dp(40), font_size='29sp', bold=True,
+            color=self.text_color)
+        self._main_menu_subtitle = Label(
+            text='A calm game of chess' if page == "home" else 'Choose how you want to play',
+            size_hint_y=None, height=dp(26), font_size='14sp', color=self.muted_color)
         self.main_menu_card.add_widget(self._main_menu_icon)
         self.main_menu_card.add_widget(self._main_menu_title)
         self.main_menu_card.add_widget(self._main_menu_subtitle)
-        self._main_menu_buttons = []
-        for caption, action, enabled in (
-                ('Singleplayer', self._start_singleplayer, True),
-                ('Multiplayer', None, False),
-                ('Settings', self._show_settings, True),
-                ('About', self._show_about, True)):
+        entries = ((('Play', self._show_play_menu, True),
+                    ('Settings', self._show_settings, True),
+                    ('About', self._show_about, True)) if page == "home" else
+                   (('Singleplayer', self._start_singleplayer, True),
+                    ('Multiplayer', None, False),
+                    ('Back', self._show_home_menu, True)))
+        for caption, action, enabled in entries:
             button = PixelButton(text=caption, size_hint_y=None, height=dp(48),
                                  corner_radius=dp(15))
             button._main_menu_button = True
-            button._menu_primary = caption == 'Singleplayer'
+            button._menu_primary = caption in {'Play', 'Singleplayer'}
             button.ripple_color = (*self.accent_color[:3], .34)
             if button._menu_primary:
                 button.fill_color = self.accent_color
@@ -545,8 +570,24 @@ class GameScreen(FloatLayout):
                 button.bind(on_release=lambda *_args, callback=action: callback())
             self.main_menu_card.add_widget(button)
             self._main_menu_buttons.append(button)
-        self.main_menu.add_widget(self.main_menu_card)
-        self.add_widget(self.main_menu)
+
+    def _show_play_menu(self):
+        Animation.cancel_all(self.main_menu_card, 'opacity')
+        fade = Animation(opacity=.25, duration=.08, t='out_quad')
+        def switch_page(*_):
+            self._populate_main_menu("play")
+            Animation(opacity=1, duration=.16, t='out_quad').start(self.main_menu_card)
+        fade.bind(on_complete=switch_page)
+        fade.start(self.main_menu_card)
+
+    def _show_home_menu(self):
+        Animation.cancel_all(self.main_menu_card, 'opacity')
+        fade = Animation(opacity=.25, duration=.08, t='out_quad')
+        def switch_page(*_):
+            self._populate_main_menu("home")
+            Animation(opacity=1, duration=.16, t='out_quad').start(self.main_menu_card)
+        fade.bind(on_complete=switch_page)
+        fade.start(self.main_menu_card)
 
     def _show_main_menu(self):
         self._in_main_menu = True
@@ -580,8 +621,11 @@ class GameScreen(FloatLayout):
 
     def _poll_theme(self, *_):
         dark = is_dark_mode()
-        if dark != self.dark_mode:
-            self._apply_theme(dark)
+        accent = get_system_accent_color(dark)
+        accent_changed = ((accent is None and getattr(self, "_using_system_accent", False))
+                          or (accent is not None and tuple(self.accent_color) != tuple(accent)))
+        if dark != self.dark_mode or accent_changed:
+            self._apply_theme(dark, system_accent=accent)
 
     def _start_audio(self, *_):
         # Force SDL2 before Kivy starts so WAV playback does not depend on
@@ -635,16 +679,19 @@ class GameScreen(FloatLayout):
             self._move_sound.stop()
             self._move_sound.play()
 
-    def _apply_theme(self, dark, animate=True):
+    def _apply_theme(self, dark, animate=True, system_accent=None):
         from kivy.core.window import Window
 
         self.dark_mode = dark
+        default_accent = ((.83, .65, .55, 1) if dark else (.65, .40, .31, 1))
+        system_accent = system_accent if system_accent is not None else get_system_accent_color(dark)
+        self._using_system_accent = system_accent is not None
         colors = ({"bg_color": (.10, .10, .10, 1), "surface_color": (.18, .18, .17, 1),
                    "text_color": (.94, .93, .90, 1), "muted_color": (.68, .67, .64, 1),
-                   "accent_color": (.83, .65, .55, 1)} if dark else
+                   "accent_color": system_accent or default_accent} if dark else
                   {"bg_color": (.94, .93, .90, 1), "surface_color": (.88, .87, .83, 1),
                    "text_color": (.12, .12, .12, 1), "muted_color": (.37, .37, .35, 1),
-                   "accent_color": (.65, .40, .31, 1)})
+                   "accent_color": system_accent or default_accent})
         if animate:
             Animation(**colors, duration=.28, t="out_quad").start(self)
         else:
@@ -665,6 +712,15 @@ class GameScreen(FloatLayout):
                     button.fill_color = (.25, .25, .24, 1) if dark else (.88, .87, .84, 1)
                     button.text_color = colors["text_color"]
                 button.ripple_color = (*colors["accent_color"][:3], .34)
+        palette_chip = getattr(self, "_settings_palette_chip", None)
+        if palette_chip is not None:
+            palette_chip.fill_color = colors["accent_color"]
+            palette_chip.text = "System" if self._using_system_accent else "Default"
+            palette_chip.text_color = ((.12, .11, .10, 1) if dark
+                                       else (.99, .98, .95, 1))
+        settings_slider = getattr(self, "_settings_slider", None)
+        if settings_slider is not None:
+            settings_slider.value_track_color = colors["accent_color"]
         for widget in self.walk():
             if isinstance(widget, PixelButton):
                 if getattr(widget, "_main_menu_button", False):
@@ -691,8 +747,12 @@ class GameScreen(FloatLayout):
                 (.15, .15, .14, 1) if dark else (.96, .95, .92, 1))
             for widget in self.result_overlay.walk():
                 if isinstance(widget, PixelButton):
-                    widget.fill_color = (.31, .31, .30, 1) if dark else (.85, .83, .79, 1)
-                    widget.text_color = colors["text_color"]
+                    if getattr(widget, "_result_action", "") == "restart":
+                        widget.fill_color = colors["accent_color"]
+                        widget.text_color = (.12, .11, .10, 1) if dark else (.99, .98, .95, 1)
+                    else:
+                        widget.fill_color = (.31, .31, .30, 1) if dark else (.85, .83, .79, 1)
+                        widget.text_color = colors["text_color"]
                     widget.ripple_color = ((.90, .89, .86, .42) if dark else (.25, .25, .23, .30))
         if self.menu_popup is not None and hasattr(self.menu_popup, "_surface_color"):
             self.menu_popup._surface_color.rgba = ((.17, .17, .16, 1) if dark else (.98, .97, .94, 1))
@@ -828,7 +888,7 @@ class GameScreen(FloatLayout):
         card.add_widget(message)
         card.add_widget(actions)
         view.add_widget(card)
-        view.open()
+        self._open_dialog_near_top(view)
         card.opacity = 0
         Animation(opacity=1, duration=.20, t='out_quad').start(card)
 
@@ -840,13 +900,23 @@ class GameScreen(FloatLayout):
         self.result_detail = f'Opponent wins   ·   {len(self.engine.board.move_stack)} plies   ·   {self._elapsed_text()}'
         self.result_visible = True
 
+    @staticmethod
+    def _align_dialog_near_top(view, *_):
+        if view._is_open:
+            from kivy.core.window import Window
+            view.top = Window.height - dp(12)
+
+    def _open_dialog_near_top(self, view):
+        view.open()
+        Clock.schedule_once(lambda dt: self._align_dialog_near_top(view), 0)
+
     def _show_settings(self):
         from kivy.uix.slider import Slider
 
-        view = ModalView(size_hint=(.90, None), height=dp(250), auto_dismiss=True,
+        view = ModalView(size_hint=(.90, None), height=dp(300), auto_dismiss=True,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .38))
-        card = RoundCard(orientation='vertical', padding=dp(22), spacing=dp(14),
+        card = RoundCard(orientation='vertical', padding=dp(20), spacing=dp(12),
                          fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
                          corner_radius=dp(30))
         heading = Label(text='Settings', size_hint_y=None, height=dp(40), bold=True,
@@ -858,8 +928,24 @@ class GameScreen(FloatLayout):
         volume_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
         slider = Slider(min=0, max=1, value=self.master_volume, size_hint_y=None,
                         height=dp(34), cursor_size=(dp(24), dp(24)))
+        slider.value_track = True
+        slider.value_track_color = self.accent_color
+        self._settings_slider = slider
         slider.bind(value=lambda _slider, value: self._update_volume_controls(
             value, volume_label))
+        palette_row = BoxLayout(size_hint_y=None, height=dp(36), spacing=dp(10))
+        palette_label = Label(text='Color palette', color=self.text_color,
+                              font_size='14sp', halign='left')
+        palette_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
+        palette_chip = PixelButton(text='System' if getattr(self, '_using_system_accent', False)
+                                   else 'Default', size_hint_x=None, width=dp(96),
+                                   corner_radius=dp(12), disabled=True)
+        palette_chip.fill_color = self.accent_color
+        palette_chip.text_color = ((.12, .11, .10, 1) if self.dark_mode
+                                   else (.99, .98, .95, 1))
+        self._settings_palette_chip = palette_chip
+        palette_row.add_widget(palette_label)
+        palette_row.add_widget(palette_chip)
         close = PixelButton(text='Done', size_hint_y=None, height=dp(46))
         close.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
         close.text_color = self.text_color
@@ -868,9 +954,10 @@ class GameScreen(FloatLayout):
         card.add_widget(heading)
         card.add_widget(volume_label)
         card.add_widget(slider)
+        card.add_widget(palette_row)
         card.add_widget(close)
         view.add_widget(card)
-        view.open()
+        self._open_dialog_near_top(view)
         card.opacity = 0
         Animation(opacity=1, duration=.20, t='out_quad').start(card)
 
@@ -936,7 +1023,7 @@ class GameScreen(FloatLayout):
         card.add_widget(github)
         card.add_widget(close)
         view.add_widget(card)
-        view.open()
+        self._open_dialog_near_top(view)
         card.opacity = 0
         Animation(opacity=1, duration=.20, t='out_quad').start(card)
 
@@ -1058,17 +1145,26 @@ class GameScreen(FloatLayout):
             content = RoundCard(orientation='vertical', padding=dp(22), spacing=dp(12),
                                 fill_color=(.15, .15, .14, 1) if self.dark_mode else (.96, .95, .92, 1),
                                 corner_radius=dp(28))
-            title = Label(color=(.12, .12, .12, 1), bold=True, font_size='23sp', size_hint_y=None, height=dp(44))
-            detail = Label(color=(.34, .34, .32, 1), font_size='14sp', halign='center')
+            title = Label(color=self.text_color, bold=True, font_size='23sp', size_hint_y=None, height=dp(44))
+            detail = Label(color=self.muted_color, font_size='14sp', halign='center')
             detail.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-            restart = PixelButton(text='Restart', size_hint_y=None, height=dp(54))
-            restart.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-            restart.text_color = self.text_color
+            actions = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(10))
+            home = PixelButton(text='Main menu')
+            home._result_action = 'home'
+            home.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
+            home.text_color = self.text_color
+            home.bind(on_release=lambda *_: self._return_to_main_menu())
+            restart = PixelButton(text='Restart')
+            restart._result_action = 'restart'
+            restart.fill_color = self.accent_color
+            restart.text_color = (.12, .11, .10, 1) if self.dark_mode else (.99, .98, .95, 1)
             restart.ripple_color = (*self.accent_color[:3], .34)
             restart.bind(on_release=lambda *_: self.new_game())
+            actions.add_widget(home)
+            actions.add_widget(restart)
             content.add_widget(title)
             content.add_widget(detail)
-            content.add_widget(restart)
+            content.add_widget(actions)
             overlay._result_card = content
             overlay.add_widget(content)
             overlay._title_label = title
@@ -1078,7 +1174,16 @@ class GameScreen(FloatLayout):
         self.result_overlay._title_label.text = self.result_title
         self.result_overlay._detail_label.text = self.result_detail
         if not self.result_overlay._is_open:
-            self.result_overlay.open()
+            self._open_dialog_near_top(self.result_overlay)
+
+    def _return_to_main_menu(self):
+        self._game_started = False
+        self.selection = None
+        self.result_visible = False
+        if self.result_overlay is not None:
+            self.result_overlay.dismiss()
+        self._populate_main_menu("home")
+        self._show_main_menu()
 
     def _elapsed_text(self):
         seconds = int(time.monotonic() - self.started_at)
@@ -1142,7 +1247,7 @@ class GameScreen(FloatLayout):
             for button, _label in choices:
                 button.size = (side, side)
         card.bind(size=fit_role_cards)
-        view.open()
+        self._open_dialog_near_top(view)
         card.opacity = 0
         Animation(opacity=1, duration=.20, t='out_quad').start(card)
         Clock.schedule_once(fit_role_cards, 0)
