@@ -3,6 +3,7 @@ from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.properties import ListProperty, NumericProperty, BooleanProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.button import Button
 from kivy.uix.widget import Widget
 
@@ -201,8 +202,7 @@ class IconActionButton(PixelButton):
         super().__init__(text="", **kwargs)
         from kivy.uix.label import Label
 
-        self.content = BoxLayout(orientation="horizontal", spacing=dp(10),
-                                 padding=(dp(10), 0, dp(8), 0))
+        self.content = FloatLayout()
         self.icon_widget = SettingsIcon(icon=icon, tint=self.icon_color,
                                         size_hint=(None, None), size=(dp(22), dp(22)))
         self.title_label = Label(text=title, color=self.text_color,
@@ -211,11 +211,13 @@ class IconActionButton(PixelButton):
         self.detail_label = Label(text=detail, color=self.muted_color,
                                   font_size="12sp", halign="left", valign="top",
                                   shorten=True, shorten_from="right")
-        self.text_stack = BoxLayout(orientation="vertical", spacing=-dp(1))
+        self.text_stack = BoxLayout(orientation="vertical", spacing=-dp(1),
+                                    size_hint=(None, None))
         self.text_stack.add_widget(self.title_label)
         self.text_stack.add_widget(self.detail_label)
         self.arrow_label = Label(text="›", color=self.muted_color,
-                                 font_size="22sp", size_hint_x=None, width=dp(18))
+                                 font_size="22sp", size_hint=(None, None),
+                                 size=(dp(18), dp(30)))
         self.content.add_widget(self.icon_widget)
         self.content.add_widget(self.text_stack)
         self.content.add_widget(self.arrow_label)
@@ -232,6 +234,18 @@ class IconActionButton(PixelButton):
             return
         self.content.pos = self.pos
         self.content.size = self.size
+        inset = dp(12)
+        icon_size = min(dp(22), max(dp(18), self.height - dp(16)))
+        self.icon_widget.size = (icon_size, icon_size)
+        self.icon_widget.pos = (self.x + inset, self.center_y - icon_size / 2)
+        arrow_width = dp(18)
+        self.arrow_label.pos = (self.right - dp(10) - arrow_width,
+                                self.center_y - self.arrow_label.height / 2)
+        text_x = self.icon_widget.right + dp(9)
+        text_right = self.arrow_label.x - dp(6)
+        text_height = max(dp(28), self.height - dp(8))
+        self.text_stack.pos = (text_x, self.center_y - text_height / 2)
+        self.text_stack.size = (max(dp(20), text_right - text_x), text_height)
 
     def _sync_content_colors(self, *_):
         if not hasattr(self, "title_label"):

@@ -765,7 +765,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
     def _show_difficulty_picker(self, *_):
         if getattr(self, "_difficulty_picker", None) is not None and self._difficulty_picker._is_open:
             return
-        view = ModalView(size_hint=(.90, None), height=dp(300), auto_dismiss=False,
+        view = ModalView(size_hint=(.90, None), height=dp(320), auto_dismiss=False,
                          background="", background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .42))
         card = RoundCard(orientation="vertical", padding=(dp(20), dp(16)), spacing=dp(12),
@@ -783,7 +783,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             button.bind(on_release=lambda *_args, selected=level: self._select_difficulty(selected))
             choice_buttons[level] = button
             choices_row.add_widget(button)
-        advanced = PixelButton(text="⚙  Advanced", size_hint_y=None, height=dp(44),
+        advanced = PixelButton(text="Advanced  ▾", size_hint_y=None, height=dp(48),
                                corner_radius=dp(14), font_size="14sp")
         advanced_options = BoxLayout(orientation="vertical", size_hint_y=None,
                                      height=dp(0), spacing=dp(6), opacity=0)
@@ -799,7 +799,8 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             time_buttons[minutes] = option
             time_row.add_widget(option)
         advanced_options.add_widget(time_row)
-        advanced.bind(on_release=lambda *_: self._toggle_advanced_options(view))
+        advanced._picker_view = view
+        advanced.bind(on_release=self._toggle_advanced_options_from_button)
         actions = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(10))
         back = PixelButton(text="Back", corner_radius=dp(14), font_size="14sp")
         back.bind(on_release=lambda *_: self._cancel_difficulty_picker(view))
@@ -854,12 +855,16 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             app.config.write()
         self._refresh_difficulty_choices()
 
+    def _toggle_advanced_options_from_button(self, button):
+        self._toggle_advanced_options(button._picker_view)
+
     def _toggle_advanced_options(self, view):
         options = view._advanced_options
         expanded = options.height <= dp(1)
         options.height = dp(86) if expanded else dp(0)
         options.opacity = 1 if expanded else 0
-        view._difficulty_card.height = dp(390 if expanded else 300)
+        view._advanced_button.text = "Advanced  ▴" if expanded else "Advanced  ▾"
+        view._difficulty_card.height = dp(410 if expanded else 320)
 
     def _refresh_advanced_picker(self):
         view = getattr(self, "_difficulty_picker", None)

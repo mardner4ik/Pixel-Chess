@@ -6,6 +6,7 @@ from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.widget import Widget
 from kivy.uix.label import Label
 from kivy.uix.image import Image
@@ -117,8 +118,11 @@ class GameDialogsMixin:
 
         surface = (.29, .29, .28, 1) if self.dark_mode else (.90, .89, .86, 1)
         volume_row = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(10))
+        volume_icon_holder = FloatLayout(size_hint=(None, 1), width=dp(36))
         volume_icon = SettingsIcon(icon="volume", tint=self.accent_color,
-                                   size_hint=(None, None), size=(dp(28), dp(28)))
+                                   size_hint=(None, None), size=(dp(24), dp(24)),
+                                   pos_hint={"center_x": .5, "center_y": .5})
+        volume_icon_holder.add_widget(volume_icon)
         volume_text = BoxLayout(orientation="vertical", spacing=-dp(2),
                                 size_hint_x=None, width=dp(105))
         volume_title = Label(text="Master volume", color=self.text_color,
@@ -134,7 +138,7 @@ class GameDialogsMixin:
         self._settings_slider = volume_slider
         volume_slider.bind(value=lambda _slider, value: self._update_volume_controls(
             value, volume_label))
-        volume_row.add_widget(volume_icon)
+        volume_row.add_widget(volume_icon_holder)
         volume_row.add_widget(volume_text)
         volume_row.add_widget(volume_slider)
 
