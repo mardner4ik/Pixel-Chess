@@ -15,9 +15,10 @@ class GameNavigationMixin:
     def _build_main_menu(self):
         self.main_menu = MenuPanel(orientation='vertical', spacing=dp(12),
                                    padding=(dp(16), dp(16)), size_hint=(.90, None),
-                                   height=dp(470), pos_hint={'center_x': .5, 'center_y': .5})
+                                   height=dp(420), pos_hint={'center_x': .5, 'center_y': .5})
         self.main_menu_card = RoundCard(orientation='vertical', spacing=dp(8),
                                         padding=(dp(20), dp(18)),
+                                        size_hint_y=None,
                                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
                                         corner_radius=dp(24))
         self._main_menu_icon = Image(source=str(asset_path("pieces", "white-king.png"
@@ -70,6 +71,11 @@ class GameNavigationMixin:
                 button.bind(on_release=lambda *_args, callback=action: callback())
             self.main_menu_card.add_widget(button)
             self._main_menu_buttons.append(button)
+        child_heights = sum(widget.height for widget in self.main_menu_card.children)
+        child_spacing = self.main_menu_card.spacing * max(0, len(self.main_menu_card.children) - 1)
+        card_padding = dp(36)
+        self.main_menu_card.height = child_heights + child_spacing + card_padding
+        self.main_menu.height = self.main_menu_card.height + dp(32)
 
     def _show_play_menu(self):
         Animation.cancel_all(self.main_menu_card, 'opacity')

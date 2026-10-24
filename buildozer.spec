@@ -4,9 +4,9 @@ title = Pixel Chess
 package.name = pixelchess
 package.domain = org.pixelchess
 source.dir = .
-source.include_exts = py,kv,png,jpg,atlas,txt,wav,ttf
+source.include_exts = py,kv,png,jpg,atlas,txt,wav,ogg,ttf
 source.exclude_dirs = .venv,venv,.git,.buildozer,__pycache__,tests
-version = 1.1.1
+version = 1.1.2
 requirements = python3,kivy==2.3.1,python-chess==1.999
 orientation = portrait
 fullscreen = 0

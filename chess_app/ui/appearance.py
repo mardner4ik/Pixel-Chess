@@ -33,25 +33,21 @@ class AppearanceMixin:
             if self._move_sound is not None:
                 self._move_sound.stop()
             track = SOUNDTRACKS_BY_ID.get(self.soundtrack_id, SOUNDTRACKS[0])
-            for filename, target in ((track["file"], "music"), ("move.wav", "move")):
-                bundled_source = ASSETS_DIR / filename
-                source = str(bundled_source) if bundled_source.is_file() else resource_find(
-                    f"assets/{filename}")
-                if source is None:
-                    Logger.warning(f"PixelChess: assets/{filename} was not found")
-                    continue
-                sound = SoundLoader.load(source)
-                if sound is None:
-                    Logger.warning(f"PixelChess: no audio provider could load assets/{filename}")
-                    continue
-                if target == "music":
-                    self._background_music = sound
-                    sound.loop = True
-                    sound.volume = self.master_volume * .65
-                    sound.play()
-                else:
-                    self._move_sound = sound
-                    sound.volume = self.master_volume * .85
+            filename = track["file"]
+            bundled_source = ASSETS_DIR / filename
+            source = str(bundled_source) if bundled_source.is_file() else resource_find(
+                f"assets/{filename}")
+            if source is None:
+                Logger.warning(f"PixelChess: assets/{filename} was not found")
+                return
+            sound = SoundLoader.load(source)
+            if sound is None:
+                Logger.warning(f"PixelChess: no audio provider could load assets/{filename}")
+                return
+            self._background_music = sound
+            sound.loop = True
+            sound.volume = self.master_volume * .65
+            sound.play()
         except Exception as error:
             from kivy.logger import Logger
             Logger.warning(f"PixelChess: background music could not start: {error}")
@@ -72,6 +68,16 @@ class AppearanceMixin:
             app.config.write()
 
     def _play_move_sound(self):
+        if self._move_sound is None:
+            try:
+                from kivy.core.audio import SoundLoader
+
+                move_path = ASSETS_DIR / "move.wav"
+                self._move_sound = SoundLoader.load(str(move_path)) if move_path.is_file() else None
+                if self._move_sound is not None:
+                    self._move_sound.volume = self.master_volume * .85
+            except Exception:
+                self._move_sound = None
         if self._move_sound is not None and self.master_volume > 0:
             self._move_sound.stop()
             self._move_sound.play()

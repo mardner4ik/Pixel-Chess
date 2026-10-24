@@ -1,6 +1,7 @@
 # App assets
 
-- `ambient.wav` — 3:30 “Friday Morning” piano track by Kevin MacLeod, converted to mono WAV for playback; see the attribution in the project README.
+- `ambient.ogg` — 3:30 “Friday Morning” piano track by Kevin MacLeod, converted to mono OGG for smaller app downloads and quicker startup; see the attribution in the project README.
+- `music/*.ogg` — four additional selectable Kevin MacLeod tracks, encoded as mono OGG.
 - `move.wav` — short, soft wooden move sound effect.
 - `pixelchess-icon.png` / `pixelchess-icon.svg` — application icon.
 - `presplash.jpg` / `presplash.svg` — Android launch screen artwork.

@@ -79,7 +79,7 @@ class GameScreen(BotThinkingMixin, AppearanceMixin, GameNavigationMixin, GameFlo
         if app is not None:
             self.master_volume = app.config.getfloat("audio", "master_volume")
         self._volume_save_trigger = Clock.create_trigger(self._save_volume_setting, .5)
-        Clock.schedule_once(self._start_audio, 0)
+        Clock.schedule_once(self._start_audio, .8)
         self.menu_button = self.ids.menu_button
         self.menu_button.bind(on_release=self._open_about_menu)
         self.board_widget = ChessBoard(self, size_hint=(None, None))

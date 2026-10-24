@@ -57,8 +57,8 @@ chess_app/ui/theme.kv        Kivy interface styles
 chess_app/ui/system_theme.py system light/dark theme detection
 chess_app/paths.py           stable paths for app and asset resources
 tests/                       engine, persistence, and UI regression tests
-assets/ambient.wav           Friday Morning piano soundtrack
-assets/music/                four additional selectable soundtracks
+assets/ambient.ogg          Friday Morning piano soundtrack
+assets/music/                four additional selectable OGG soundtracks
 assets/move.wav              soft move sound effect
 assets/fonts/                Google Sans Flex UI font and SIL Open Font License
 assets/pieces/               pixel and vector piece artwork
@@ -77,4 +77,4 @@ Pixel Chess is distributed under the GNU General Public License v3.0 only (GPL-3
 - **Google Fonts contributors** — Google Sans Flex, distributed under SIL Open Font License 1.1; see [`assets/fonts/OFL.txt`](assets/fonts/OFL.txt).
 - The app uses [Kivy](https://kivy.org/) for its interface and [python-chess](https://python-chess.readthedocs.io/) for chess rules.
 
-Music attribution: “Friday Morning” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1100224)), “Easy Lemon” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1200076)), “Immersed” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1600010)), “Morning” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN2300003)), and “Evening” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN2300002)) by Kevin MacLeod ([incompetech.com](https://incompetech.com/)), licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/). The source MP3s were converted to mono 22.05 kHz WAV for app playback; the compositions are unchanged.
+Music attribution: “Friday Morning” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1100224)), “Easy Lemon” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1200076)), “Immersed” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1600010)), “Morning” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN2300003)), and “Evening” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN2300002)) by Kevin MacLeod ([incompetech.com](https://incompetech.com/)), licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/). The source MP3s are bundled as mono OGG files to reduce APK size; the compositions are unchanged.

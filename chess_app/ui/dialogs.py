@@ -20,18 +20,18 @@ from chess_app.ui.widgets import (PixelButton, RoundCard,
 
 class GameDialogsMixin:
     def _confirm_resignation(self):
-        view = ModalView(size_hint=(.90, None), height=dp(172), auto_dismiss=True,
+        view = ModalView(size_hint=(.90, None), height=dp(156), auto_dismiss=True,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .42))
-        card = RoundCard(orientation='vertical', padding=(dp(20), dp(12), dp(20), dp(8)), spacing=dp(10),
+        card = RoundCard(orientation='vertical', padding=(dp(20), dp(10)), spacing=dp(8),
                          fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
                          corner_radius=dp(24))
-        heading = Label(text='Resign this game?', size_hint_y=None, height=dp(34),
-                        bold=True, font_size='20sp', color=self.text_color, halign='left')
+        heading = Label(text='Resign this game?', size_hint_y=None, height=dp(32),
+                        bold=True, font_size='21sp', color=self.text_color, halign='left')
         heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        message = Label(text='Your opponent will win the game.',
-                        size_hint_y=None, height=dp(36), color=self.muted_color,
-                        font_size='14sp', halign='left')
+        message = Label(text='Your opponent wins.',
+                        size_hint_y=None, height=dp(30), color=self.muted_color,
+                        font_size='15sp', halign='left')
         message.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
         actions = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(8))
         actions.add_widget(Widget())
@@ -97,10 +97,10 @@ class GameDialogsMixin:
     def _show_settings(self, *_):
         from kivy.uix.slider import Slider
 
-        view = ModalView(size_hint=(.94, None), height=dp(450), auto_dismiss=True,
+        view = ModalView(size_hint=(.94, None), height=dp(382), auto_dismiss=True,
                          background="", background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .38))
-        card = RoundCard(orientation="vertical", padding=(dp(20), dp(16)), spacing=dp(8),
+        card = RoundCard(orientation="vertical", padding=(dp(20), dp(12)), spacing=dp(6),
                          fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
                          corner_radius=dp(28))
         heading = Label(text="Settings", size_hint_y=None, height=dp(34),

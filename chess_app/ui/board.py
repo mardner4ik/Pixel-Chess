@@ -191,6 +191,11 @@ class ChessBoard(Widget):
         from kivy.graphics import Color, Rectangle, Ellipse
         from kivy.utils import get_color_from_hex
 
+        if getattr(self.screen, "_in_main_menu", False):
+            self._static_group.clear()
+            self._moving_group.clear()
+            return
+
         self._static_group.clear()
         self._moving_group.clear()
         self._drag_translate = None

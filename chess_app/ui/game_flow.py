@@ -45,7 +45,7 @@ class GameFlowMixin:
             return
         if self.result_overlay is None:
 
-            overlay = ModalView(size_hint=(.88, None), height=dp(260), auto_dismiss=False,
+            overlay = ModalView(size_hint=(.88, None), height=dp(220), auto_dismiss=False,
                                 background='', background_color=(0, 0, 0, 0),
                                 overlay_color=(.06, .06, .06, .48))
             content = RoundCard(orientation='vertical', padding=(dp(22), dp(14), dp(22), dp(8)), spacing=dp(12),
@@ -104,7 +104,7 @@ class GameFlowMixin:
     def _show_difficulty_picker(self, *_):
         if getattr(self, "_difficulty_picker", None) is not None and self._difficulty_picker._is_open:
             return
-        view = ModalView(size_hint=(.90, None), height=dp(320), auto_dismiss=False,
+        view = ModalView(size_hint=(.90, None), height=dp(300), auto_dismiss=False,
                          background="", background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .42))
         card = RoundCard(orientation="vertical", padding=(dp(20), dp(16)), spacing=dp(12),
@@ -220,7 +220,7 @@ class GameFlowMixin:
         for control in view._advanced_controls:
             control.disabled = not expanded
         view._advanced_indicator.icon = "up" if expanded else "down"
-        view._difficulty_card.height = dp(410 if expanded else 320)
+        view._difficulty_card.height = dp(386 if expanded else 300)
 
     def _refresh_advanced_picker(self):
         view = getattr(self, "_difficulty_picker", None)
@@ -262,7 +262,7 @@ class GameFlowMixin:
     def _show_side_picker(self, *_):
         if self._side_picker is not None and self._side_picker._is_open:
             return
-        view = ModalView(size_hint=(.82, None), height=dp(200), auto_dismiss=False,
+        view = ModalView(size_hint=(.82, None), height=dp(188), auto_dismiss=False,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .42))
         card = RoundCard(orientation='vertical', padding=(dp(14), dp(12), dp(14), dp(8)), spacing=dp(8),
