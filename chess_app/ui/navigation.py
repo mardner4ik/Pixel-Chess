@@ -214,7 +214,10 @@ class GameNavigationMixin:
     def _connect_multiplayer_server(self, url):
         url = url.strip().rstrip('/')
         if not self._is_allowed_multiplayer_url(url):
-            self._show_toast('Use HTTPS online or HTTP with a local IP')
+            if url.lower().startswith('http://'):
+                self._show_toast('Local HTTP needs a private IP, e.g. http://192.168.0.104:5000')
+            else:
+                self._show_toast('Use HTTPS online or http://<private-ip>:5000 locally')
             return
         config = self._multiplayer_config()
         if config:
