@@ -55,7 +55,7 @@ The Linux bundle needs a 64-bit glibc system and system OpenGL/input libraries. 
 
 ## Run from source
 
-Requires Python 3.12 or newer. From the project directory:
+Requires Python 3.11 or newer. From the project directory:
 
 ```bash
 python -m venv .venv
