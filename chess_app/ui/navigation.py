@@ -7,6 +7,7 @@ from kivy.graphics import Color, RoundedRectangle
 from kivy.uix.image import Image
 from kivy.uix.label import Label
 
+from chess_app.core.engine import ChessEngine
 from chess_app.paths import asset_path
 from chess_app.ui.widgets import MenuPanel, PixelButton, RoundCard, ToastMessage
 
@@ -108,14 +109,26 @@ class GameNavigationMixin:
         Animation(opacity=1, duration=.22, t='out_quad').start(self.main_menu)
 
     def _start_singleplayer(self):
+        self._cancel_bot_thinking()
+        self._game_started = False
+        if self._clock_event is not None:
+            self._clock_event.cancel()
+            self._clock_event = None
+        self.engine = ChessEngine()
+        self.selection = None
+        self.board_widget.flipped = False
         self._in_main_menu = False
         Animation.cancel_all(self.main_menu, 'opacity')
         fade = Animation(opacity=0, duration=.14, t='out_quad')
         fade.bind(on_complete=lambda *_: self._hide_main_menu())
         fade.start(self.main_menu)
         self.ids.board_container.disabled = False
+        self.ids.board_container.opacity = 1
         self.ids.menu_button.disabled = False
         self.ids.status_label.opacity = 1
+        # Draw the board as soon as Singleplayer is chosen so it is visible
+        # behind the difficulty and side pickers, before a color is selected.
+        self.refresh()
         self._side_picker = None
         Clock.schedule_once(self._show_difficulty_picker, .12)
 
