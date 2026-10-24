@@ -31,6 +31,7 @@ jobs:
         id: build-apk
         continue-on-error: true
         run: |
+          set +e
           set -o pipefail
           (set -e
           python -m pip install --upgrade pip buildozer==1.6.0 cython==0.29.37
@@ -71,6 +72,7 @@ jobs:
         id: build-linux
         continue-on-error: true
         run: |
+          set +e
           set -o pipefail
           (set -e
           python -m pip install --upgrade pip
