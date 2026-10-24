@@ -1,19 +1,17 @@
 """Modal dialogs and settings controls for the main game screen."""
 
-from kivy.app import App
 from kivy.animation import Animation
 from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
-from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.widget import Widget
 from kivy.uix.label import Label
 from kivy.uix.image import Image
 from kivy.uix.modalview import ModalView
-from kivy.uix.scrollview import ScrollView
 import webbrowser
 
+from chess_app.paths import asset_path
 from chess_app.ui.board import ACCENT_PALETTES, BOARD_PALETTES
 from chess_app.ui.soundtracks import SOUNDTRACKS, SOUNDTRACKS_BY_ID
 from chess_app.ui.widgets import (PixelButton, RoundCard,
@@ -96,7 +94,7 @@ class GameDialogsMixin:
         view._dialog_container = container
         view.open()
 
-    def _show_settings(self):
+    def _show_settings(self, *_):
         from kivy.uix.slider import Slider
 
         view = ModalView(size_hint=(.94, None), height=dp(450), auto_dismiss=True,
@@ -150,7 +148,7 @@ class GameDialogsMixin:
             muted_color=self.muted_color, icon_color=self.accent_color)
         soundtrack_button.bind(on_release=lambda *_: self._show_setting_choices(
             "Background music", [(track["id"], track["title"]) for track in SOUNDTRACKS],
-            self.soundtrack_id, lambda value: self._choose_soundtrack(value, soundtrack_button)))
+            self.soundtrack_id, lambda value: self._choose_soundtrack(value, soundtrack_button), view))
 
         appearance_row = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(10))
         board_button = IconActionButton(
@@ -164,10 +162,10 @@ class GameDialogsMixin:
             muted_color=self.muted_color, icon_color=self.accent_color)
         board_button.bind(on_release=lambda *_: self._show_setting_choices(
             "Board style", [(name, name.title()) for name in BOARD_PALETTES], self.board_palette,
-            lambda value: self._choose_board_palette(value, board_button)))
+            lambda value: self._choose_board_palette(value, board_button), view))
         pieces_button.bind(on_release=lambda *_: self._show_setting_choices(
             "Piece style", [("pixel", "Pixel"), ("vector", "Vector")], self.piece_style,
-            lambda value: self._choose_piece_style(value, pieces_button)))
+            lambda value: self._choose_piece_style(value, pieces_button), view))
         appearance_row.add_widget(board_button)
         appearance_row.add_widget(pieces_button)
 
@@ -179,7 +177,7 @@ class GameDialogsMixin:
             muted_color=self.muted_color, icon_color=self.accent_color)
         accent_button.bind(on_release=lambda *_: self._show_setting_choices(
             "Accent color", [("system", "Auto")] + [(mode, mode.title()) for mode in ACCENT_PALETTES],
-            self.accent_mode, lambda value: self._choose_accent(value, accent_button)))
+            self.accent_mode, lambda value: self._choose_accent(value, accent_button), view))
 
         close = PixelButton(text="Done", size_hint_y=None, height=dp(44),
                             font_size="15sp", corner_radius=dp(13),
@@ -194,10 +192,15 @@ class GameDialogsMixin:
         card.opacity = 0
         Animation(opacity=1, duration=.20, t="out_quad").start(card)
 
-    def _show_setting_choices(self, title, choices, selected, on_select):
-        """Show explicit options in a compact contextual picker."""
+    def _show_setting_choices(self, title, choices, selected, on_select, settings_view):
+        """Show choices in a separate page, without stacking modal windows."""
+        settings_view.dismiss(animation=False)
+        Clock.schedule_once(lambda _dt: self._open_setting_choices(
+            title, choices, selected, on_select), .05)
+
+    def _open_setting_choices(self, title, choices, selected, on_select):
         row_height = dp(42)
-        view_height = min(dp(420), dp(78) + len(choices) * (row_height + dp(5)))
+        view_height = min(dp(440), dp(122) + len(choices) * (row_height + dp(5)))
         view = ModalView(size_hint=(.84, None), height=view_height, auto_dismiss=True,
                          background="", background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .40))
@@ -218,14 +221,28 @@ class GameDialogsMixin:
                                  ((.29, .29, .28, 1) if self.dark_mode else (.90, .89, .86, 1)),
                                  text_color=self._accent_text_color(self.accent_color) if value == selected
                                  else self.text_color)
-            option.bind(on_release=lambda *_args, choice=value: (on_select(choice), view.dismiss()))
+            option.bind(on_release=lambda *_args, choice=value: self._select_setting_choice(
+                choice, on_select, view))
             rows.add_widget(option)
-        scroll = ScrollView(do_scroll_x=False, bar_width=dp(3))
-        scroll.add_widget(rows)
+        back = PixelButton(text="Back", size_hint_y=None, height=dp(42),
+                           font_size="14sp", corner_radius=dp(13),
+                           fill_color=(.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1),
+                           text_color=self.text_color)
+        back.bind(on_release=lambda *_: view.dismiss(animation=False))
         card.add_widget(heading)
-        card.add_widget(scroll)
+        card.add_widget(rows)
+        card.add_widget(back)
         view.add_widget(card)
         self._open_dialog_near_top(view, card)
+        view.bind(on_dismiss=self._restore_settings_after_picker)
+
+    def _restore_settings_after_picker(self, *_):
+        Clock.schedule_once(self._show_settings, .25)
+
+    @staticmethod
+    def _select_setting_choice(value, on_select, view):
+        on_select(value)
+        view.dismiss(animation=False)
 
     def _choose_soundtrack(self, value, button):
         self._set_soundtrack(value)
@@ -271,8 +288,8 @@ class GameDialogsMixin:
         github = PixelButton(text='', size_hint_y=None, height=dp(48))
         github_row = BoxLayout(size_hint=(None, None), size=(dp(108), dp(28)),
                                spacing=dp(9), pos_hint={'center_x': .5, 'center_y': .5})
-        github_icon = Image(source=("assets/github-mark-light.png" if self.dark_mode
-                                    else "assets/github-mark.png"),
+        github_icon = Image(source=str(asset_path("github-mark-light.png" if self.dark_mode
+                                               else "github-mark.png")),
                             size_hint=(None, 1), width=dp(26), fit_mode='contain')
         github_label = Label(text='GitHub', color=self.text_color, bold=True,
                              font_size='15sp')

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 import chess
 from kivy.animation import Animation
 from kivy.clock import Clock
@@ -9,6 +8,7 @@ from kivy.properties import ListProperty, NumericProperty, BooleanProperty, Stri
 from kivy.uix.widget import Widget
 from kivy.graphics import Canvas, PushMatrix, PopMatrix, Translate
 from concurrent.futures import ThreadPoolExecutor
+from chess_app.paths import asset_path
 
 BOT_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chess-bot")
 _COORD_TEXTURES = {}
@@ -353,10 +353,10 @@ class ChessBoard(Widget):
         key = (getattr(self.screen, "piece_style", "pixel"), "white" if white else "black", names[piece_type])
         texture = _PIECE_TEXTURES.get(key)
         if texture is None:
-            project_root = Path(__file__).resolve().parents[2]
             style = getattr(self.screen, "piece_style", "pixel")
             folder = "vector" if style == "vector" else ""
-            image_path = project_root / "assets" / "pieces" / folder / f"{key[1]}-{key[2]}.png"
+            image_path = asset_path("pieces", folder, f"{key[1]}-{key[2]}.png") if folder else \
+                asset_path("pieces", f"{key[1]}-{key[2]}.png")
             texture = CoreImage(str(image_path), keep_data=False).texture
             _PIECE_TEXTURES[key] = texture
         target = group or self._static_group

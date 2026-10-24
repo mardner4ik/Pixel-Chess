@@ -97,6 +97,7 @@ class GameSessionMixin:
         self.ids.status_label.opacity = 1
         if self.time_control:
             self._last_clock_tick = time.monotonic()
+            self._last_clock_save = self._last_clock_tick
             self._clock_event = Clock.schedule_interval(self._tick_clock, .25)
         self.refresh()
         if self.engine.board.turn != self.player_color:
@@ -160,8 +161,10 @@ class GameSessionMixin:
                 self._clock_event = None
             self._clear_saved_game()
             return
-        self._save_game()
-        self.refresh()
+        if now - self._last_clock_save >= 5:
+            self._save_game()
+            self._last_clock_save = now
+        self.refresh(redraw_board=False)
 
     def _consume_clock(self, color):
         if self.time_control:
@@ -196,6 +199,7 @@ class GameSessionMixin:
         self.board_widget.selected = []
         self.board_widget.targets = []
         self._last_clock_tick = time.monotonic()
+        self._last_clock_save = self._last_clock_tick
         self.refresh()
         self._save_game()
 

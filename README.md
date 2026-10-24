@@ -6,7 +6,7 @@ A minimalist, mobile-first chess game built with [Kivy](https://kivy.org/). Choo
 
 - Standard chess rules and game-end detection powered by `python-chess`
 - Local opponent using iterative deepening, alpha-beta search, and a transposition table, with Easy, Normal, and Hard strengths
-- The bot waits a random 4–15 seconds before each move; Easy deliberately chooses weaker moves
+- The bot has adjustable 4–15 second thinking time or can move instantly; Easy deliberately chooses weaker moves
 - Optional 3, 5, and 10 minute clocks
 - Undo the latest turn, save and resume an unfinished game
 - Four board palettes and two piece artwork styles
@@ -29,7 +29,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-From the main menu, choose **Play → Singleplayer**, select the opponent strength, then choose White or Black. The **Advanced** section offers optional clock controls and a choice between a 4–15 second thinking delay or instant bot moves. The clock is off by default. During a thinking delay, a live countdown appears in the game status. Tap a piece to show its legal moves, then tap a destination, or drag a piece to a square. The in-game menu provides Settings, About, **Save**, Undo, and **Resign**. Save writes a resumable game and confirms with a brief toast. Settings controls volume, soundtrack, board and piece styles, and accent colors. An unfinished game can be resumed from the main menu. After a game ends, choose **Main menu** or **Restart**. Multiplayer is visible but disabled while it is being developed.
+From the main menu, choose **Play → Singleplayer**, select the opponent strength, then choose White or Black. The **Advanced** section offers optional clock controls and a choice between a 4–15 second thinking delay or instant bot moves. The clock is off by default. While the bot thinks, the game status shows a stopwatch that stops when it moves. Tap a piece to show its legal moves, then tap a destination, or drag a piece to a square. The in-game menu provides Settings, About, **Save**, Undo, and **Resign**. Save writes a resumable game and confirms with a brief toast. Settings controls volume, soundtrack, board and piece styles, and accent colors. An unfinished game can be resumed from the main menu. After a game ends, choose **Main menu** or **Restart**. Multiplayer is visible but disabled while it is being developed.
 
 ## Build for Android
 
@@ -46,13 +46,17 @@ The app configuration is in [`buildozer.spec`](buildozer.spec). Generated build 
 ```text
 main.py                    app entry point
 chess_app/core/engine.py     chess rules and local opponent search
-chess_app/ui/game_screen.py  screen lifecycle, menus, and game interaction
+chess_app/ui/game_screen.py  screen lifecycle, navigation, and game interaction
+chess_app/ui/appearance.py   theme, accent, and audio behavior
+chess_app/ui/bot_thinking.py bot worker lifecycle and thinking stopwatch
 chess_app/ui/board.py        board drawing, gestures, and move animation
 chess_app/ui/dialogs.py      settings and modal dialogs
 chess_app/ui/session.py      clocks, save/resume, and undo
 chess_app/ui/widgets.py      shared buttons and cards
 chess_app/ui/theme.kv        Kivy interface styles
 chess_app/ui/system_theme.py system light/dark theme detection
+chess_app/paths.py           stable paths for app and asset resources
+tests/                       engine, persistence, and UI regression tests
 assets/ambient.wav           Friday Morning piano soundtrack
 assets/music/                four additional selectable soundtracks
 assets/move.wav              soft move sound effect
