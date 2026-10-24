@@ -5,7 +5,10 @@ A minimalist, mobile-first chess game built with [Kivy](https://kivy.org/). Choo
 ## Features
 
 - Standard chess rules and game-end detection powered by `python-chess`
-- Local opponent using iterative deepening, alpha-beta search, and a transposition table
+- Local opponent using iterative deepening, alpha-beta search, and a transposition table, with Easy, Normal, and Hard strength settings
+- Optional 3, 5, and 10 minute clocks
+- Undo the latest turn, resume an unfinished game after reopening the app, and export a PGN copy
+- Four board palettes and two piece artwork styles
 - Responsive touch controls, legal move hints, and animated moves
 - Google Sans Flex typography inspired by the Pixel interface
 - Main menu with Play, Settings, and About; Multiplayer is shown as a future feature
@@ -24,7 +27,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-From the main menu, choose **Play → Singleplayer**, then select White or Black. Tap a piece to show its legal moves, then tap a destination, or drag a piece to a square. Settings lets you choose the system accent or a built-in palette. The in-game menu provides Settings, About, and **Resign**. After a game ends, choose **Main menu** or **Restart**. Multiplayer is visible but disabled while it is being developed.
+From the main menu, choose **Play → Singleplayer**, then select White or Black. Tap a piece to show its legal moves, then tap a destination, or drag a piece to a square. Settings lets you choose the system accent or a built-in palette. The in-game menu provides Settings, About, Undo, PGN export, and **Resign**. Settings includes opponent strength, optional clock, board and piece styles, accent colors, and volume. An unfinished game can be resumed from the main menu. PGN exports are written to the app's user data folder. After a game ends, choose **Main menu** or **Restart**. Multiplayer is visible but disabled while it is being developed.
 
 ## Build for Android
 
@@ -40,14 +43,18 @@ The app configuration is in [`buildozer.spec`](buildozer.spec). Generated build 
 
 ```text
 main.py                    app entry point
-chess_app/core/engine.py   chess rules and local opponent search
-chess_app/ui/game_screen.py board, interaction, menus, and dialogs
-chess_app/ui/theme.kv      Kivy interface styles
+chess_app/core/engine.py     chess rules and local opponent search
+chess_app/ui/game_screen.py  screen lifecycle, menus, and game interaction
+chess_app/ui/board.py        board drawing, gestures, and move animation
+chess_app/ui/dialogs.py      settings and modal dialogs
+chess_app/ui/session.py      clocks, save/resume, undo, and PGN export
+chess_app/ui/widgets.py      shared buttons and cards
+chess_app/ui/theme.kv        Kivy interface styles
 chess_app/ui/system_theme.py system light/dark theme detection
-assets/ambient.wav         licensed 3:30 piano soundtrack
-assets/move.wav            soft move sound effect
-assets/fonts/              Google Sans Flex UI font and SIL Open Font License
-assets/pieces/             twelve piece images (PNG plus SVG source)
+assets/ambient.wav           licensed 3:30 piano soundtrack
+assets/move.wav              soft move sound effect
+assets/fonts/                Google Sans Flex UI font and SIL Open Font License
+assets/pieces/               pixel and vector piece artwork
 ```
 
 ## License

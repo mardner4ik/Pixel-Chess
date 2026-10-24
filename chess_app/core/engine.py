@@ -21,14 +21,16 @@ class ChessEngine:
             raise ValueError("Illegal move")
         self.board.push(move)
 
-    def bot_move(self) -> chess.Move | None:
+    def bot_move(self, difficulty: str = "normal") -> chess.Move | None:
         moves = list(self.board.legal_moves)
         if not moves:
             return None
         # Iterative deepening gives a legal answer quickly, while a variable
         # budget makes the opponent feel less mechanical on a phone.
         complexity = min(1.0, len(moves) / 36)
-        budget = random.uniform(.38, .90) + complexity * random.uniform(.15, .65)
+        budgets = {"easy": (.10, .24), "normal": (.38, .90), "hard": (.85, 1.50)}
+        low, high = budgets.get(difficulty, budgets["normal"])
+        budget = random.uniform(low, high) + complexity * (high - low)
         if self.board.is_check() or len(moves) <= 4:
             budget += random.uniform(.12, .30)
         self._deadline = time.monotonic() + budget

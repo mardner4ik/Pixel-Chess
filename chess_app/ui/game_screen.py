@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import chess
 import time
-import webbrowser
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
+
+import chess
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.metrics import dp
@@ -12,476 +11,18 @@ from kivy.animation import Animation
 from kivy.properties import ListProperty, StringProperty, NumericProperty, BooleanProperty, ColorProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
-from kivy.uix.button import Button
 from kivy.uix.widget import Widget
-from kivy.uix.modalview import ModalView
 from kivy.uix.label import Label
 from kivy.uix.image import Image
-from kivy.graphics import Canvas, PushMatrix, PopMatrix, Translate
 
 from chess_app.core.engine import ChessEngine
 from chess_app.ui.system_theme import get_system_accent_color, is_dark_mode
+from chess_app.ui.widgets import PixelButton, MenuIconButton, AccentChoiceButton, MenuPanel, RoundCard
+from chess_app.ui.board import ChessBoard, ACCENT_PALETTES, BOARD_PALETTES, BOT_POOL
+from chess_app.ui.dialogs import GameDialogsMixin
+from chess_app.ui.session import GameSessionMixin
 
-class PixelButton(Button):
-    ripple_x = NumericProperty(0)
-    ripple_y = NumericProperty(0)
-    ripple_radius = NumericProperty(0)
-    ripple_alpha = NumericProperty(0)
-    ripple_color = ListProperty([.72, .48, .37, 1])
-    fill_color = ListProperty([.85, .83, .79, 1])
-    text_color = ListProperty([.12, .12, .12, 1])
-    corner_radius = NumericProperty(dp(24))
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._ripple_fade = None
-        self._pressed_touch = None
-
-    def on_press(self):
-        # Touch feedback is drawn with the shared ripple. Do not animate the
-        # button's base fill: menu actions may replace that fill while release
-        # callbacks are running (for example, the active menu state).
-        pass
-
-    def on_release(self):
-        pass
-
-    def on_touch_up(self, touch):
-        result = super().on_touch_up(touch)
-        if self._pressed_touch is touch:
-            self._pressed_touch = None
-            if self._ripple_fade is not None:
-                self._ripple_fade.cancel()
-            self._ripple_fade = Clock.schedule_once(self._fade_ripple, .18)
-        return result
-
-    def on_touch_down(self, touch):
-        if self.collide_point(*touch.pos) and self.disabled is False:
-            self._pressed_touch = touch
-            if self._ripple_fade is not None:
-                self._ripple_fade.cancel()
-            self.ripple_x, self.ripple_y = touch.pos
-            corners = ((self.x, self.y), (self.right, self.y), (self.x, self.top), (self.right, self.top))
-            self.ripple_radius = 0
-            self.ripple_alpha = 0
-            Animation.cancel_all(self, "ripple_radius", "ripple_alpha")
-            radius = max(((x - self.ripple_x) ** 2 + (y - self.ripple_y) ** 2) ** .5 for x, y in corners)
-            # Keep the effect short and property-light so touch feedback never
-            # competes with board updates on low-end Android GPUs.
-            Animation(ripple_radius=radius, duration=.20, t="out_quad").start(self)
-            self.ripple_alpha = .42
-        return super().on_touch_down(touch)
-
-    def _fade_ripple(self, *_):
-        Animation(ripple_alpha=0, duration=.20, t="out_quad").start(self)
-
-
-class MenuIconButton(PixelButton):
-    pass
-
-
-class AccentChoiceButton(PixelButton):
-    selected = BooleanProperty(False)
-
-
-class MenuPanel(BoxLayout):
-    """A faded-out menu must let board touches pass through while disabled."""
-
-    def on_touch_down(self, touch):
-        if self.opacity <= .01:
-            return False
-        return super().on_touch_down(touch)
-
-
-class RoundCard(BoxLayout):
-    fill_color = ListProperty([.98, .97, .94, 1])
-    corner_radius = NumericProperty(dp(28))
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        from kivy.graphics import Color, RoundedRectangle
-        with self.canvas.before:
-            self._fill_instruction = Color(*self.fill_color)
-            self._shape_instruction = RoundedRectangle(
-                pos=self.pos, size=self.size, radius=[self.corner_radius])
-        self.bind(pos=self._sync_shape, size=self._sync_shape,
-                  fill_color=self._sync_fill, corner_radius=self._sync_shape)
-
-    def _sync_shape(self, *_):
-        self._shape_instruction.pos = self.pos
-        self._shape_instruction.size = self.size
-        self._shape_instruction.radius = [self.corner_radius]
-
-    def _sync_fill(self, *_):
-        self._fill_instruction.rgba = self.fill_color
-
-
-BOT_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chess-bot")
-_COORD_TEXTURES = {}
-_PIECE_TEXTURES = {}
-ACCENT_PALETTES = {
-    "blue": (.26, .43, .91, 1),
-    "green": (.15, .53, .35, 1),
-    "violet": (.52, .34, .78, 1),
-    "amber": (.76, .43, .04, 1),
-}
-
-
-class ChessBoard(Widget):
-    drag_scale = NumericProperty(1.0)
-    selected = ListProperty([])
-    targets = ListProperty([])
-    last_move = ListProperty([])
-    check_square = StringProperty("")
-    animating = BooleanProperty(False)
-    previous_move = ListProperty([])
-    flipped = BooleanProperty(False)
-
-    def __init__(self, screen, **kwargs):
-        super().__init__(**kwargs)
-        self.screen = screen
-        self._drag_square = None
-        self._drag_piece = None
-        self._press_square = None
-        self._press_piece = None
-        self._active_touch = None
-        self._drag_touch_offset = (0, 0)
-        self._drag_last_pos = None
-        self._drag_moved = False
-        self._drop_start_pos = None
-        self._animation_start_pos = None
-        self._drag_translate = None
-        self._board_group = Canvas()
-        self._static_group = Canvas()
-        self._moving_group = Canvas()
-        self._move_translation = None
-        self._board_dirty = True
-        # Coalesce bursts of state changes into a single canvas rebuild per frame.
-        self._redraw_trigger = Clock.create_trigger(self._redraw_now, 0)
-        self.canvas.add(self._board_group)
-        self.canvas.add(self._static_group)
-        self.canvas.add(self._moving_group)
-        self.bind(pos=self._geometry_changed, size=self._geometry_changed,
-                  flipped=self._orientation_changed)
-        self.bind(anim_progress=self._update_animated_piece)
-        self.redraw()
-
-    def _geometry_changed(self, *_):
-        self._board_dirty = True
-        self.redraw()
-
-    def _orientation_changed(self, *_):
-        self._board_dirty = True
-        self.redraw()
-
-    def invalidate_board(self):
-        self._board_dirty = True
-        self.redraw()
-
-    def square_at(self, pos):
-        x, y = pos[0] - self.x, pos[1] - self.y
-        size = min(self.width, self.height)
-        size /= 8
-        ox = (self.width - size * 8) / 2
-        oy = (self.height - size * 8) / 2
-        x -= ox
-        y -= oy
-        if size <= 0 or x < 0 or y < 0 or x >= size * 8 or y >= size * 8:
-            return None
-        file, rank = int(x // size), int(y // size)
-        if self.flipped:
-            file, rank = 7 - file, 7 - rank
-        return chess.square(file, rank)
-
-    def on_touch_down(self, touch):
-        if not self.collide_point(*touch.pos):
-            return False
-        square = self.square_at(touch.pos)
-        if square is not None:
-            touch.ud["chess_start_square"] = square
-            touch.ud["chess_start_pos"] = (touch.x, touch.y)
-            board = self.screen.engine.board
-            piece = board.piece_at(square)
-            can_drag = bool(piece and piece.color == self.screen.player_color
-                            and board.turn == self.screen.player_color)
-            touch.ud["chess_piece_start"] = can_drag
-            self._press_square = square
-            self._press_piece = piece if can_drag else None
-            self._drag_moved = False
-            self._active_touch = touch
-            touch.grab(self)
-        return True
-
-    def _touch_offset(self, square, pos):
-        size = min(self.width, self.height) / 8
-        ox = self.x + (self.width - size * 8) / 2
-        oy = self.y + (self.height - size * 8) / 2
-        file, rank = chess.square_file(square), chess.square_rank(square)
-        if self.flipped:
-            file, rank = 7-file, 7-rank
-        center = (ox + (file + .5) * size, oy + (rank + .5) * size)
-        return pos[0] - center[0], pos[1] - center[1]
-
-    def on_touch_move(self, touch):
-        if self._active_touch is not touch and touch.grab_current is not self:
-            return super().on_touch_move(touch)
-        start = touch.ud.get("chess_start_pos", (touch.x, touch.y))
-        dx, dy = touch.x - start[0], touch.y - start[1]
-        if self._drag_piece is None:
-            if self._press_piece is None or dx * dx + dy * dy < dp(7) ** 2:
-                return True
-            # A short movement threshold cleanly separates a tap from a drag.
-            # Keep the original touch-to-piece offset, then lift at the finger.
-            self._drag_square = self._press_square
-            self._drag_piece = self._press_piece
-            self._drag_touch_offset = self._touch_offset(self._drag_square, start)
-            self._drag_moved = True
-            self._drag_last_pos = (touch.x, touch.y)
-            self.screen.choose_square(self._drag_square)
-        # Follow raw input; easing each pointer event creates visible lag.
-        self._drag_last_pos = (touch.x, touch.y)
-        self._render_drag_piece()
-        return True
-
-    def on_touch_up(self, touch):
-        if self._active_touch is touch or touch.grab_current is self:
-            if touch.grab_current is self:
-                touch.ungrab(self)
-            end_square = self.square_at(touch.pos)
-            start_square = touch.ud.get("chess_start_square")
-            dragged = self._drag_piece is not None and self._drag_moved
-            if dragged and end_square is not None and start_square is not None and end_square != start_square:
-                # Preserve the floating sprite's actual centre as the start of
-                # the landing animation. It must never jump back to its origin.
-                cell = min(self.width, self.height) / 8
-                if self._press_piece and self._press_piece.piece_type == chess.PAWN:
-                    offset_x, offset_y = self._drag_touch_offset
-                else:
-                    offset_x = offset_y = 0
-                self._drop_start_pos = (
-                    touch.x - offset_x - cell / 2,
-                    touch.y - offset_y - cell / 2,
-                )
-            self._drag_piece = None
-            self._drag_square = None
-            self._drag_last_pos = None
-            self._press_square = None
-            self._press_piece = None
-            self._active_touch = None
-            self._drag_moved = False
-            self._moving_group.clear()
-            self._drag_translate = None
-            if dragged and end_square is not None and start_square is not None and end_square != start_square:
-                if self.screen.selection == start_square:
-                    self.screen.choose_square(end_square)
-                # A rejected drop must not seed the next move's animation.
-                self._drop_start_pos = None
-            elif not dragged:
-                # A quick press/release is a tap: select a piece or choose its
-                # destination without ever lifting or hiding it mid-gesture.
-                if start_square is not None:
-                    self.screen.choose_square(start_square)
-            self.redraw()
-            return True
-        return super().on_touch_up(touch)
-
-    def redraw(self, *_):
-        self._redraw_trigger()
-
-    def _redraw_now(self, *_):
-        from kivy.graphics import Color, Rectangle, Ellipse
-        from kivy.utils import get_color_from_hex
-
-        self._static_group.clear()
-        self._moving_group.clear()
-        self._drag_translate = None
-        size = min(self.width, self.height) / 8
-        ox = self.x + (self.width - size * 8) / 2
-        oy = self.y + (self.height - size * 8) / 2
-        board = self.screen.engine.board
-        selected = set(self.selected)
-        targets = set(self.targets)
-        last = set(self.last_move)
-        king = board.king(board.turn) if board.is_check() else None
-        palette = ({"light": "#D7D4CD", "dark": "#777670", "select": "#A98A7B", "check": "#A77965"}
-                   if self.screen.dark_mode else
-                   {"light": "#F1EEE8", "dark": "#AAA9A3", "select": "#D9B7A8", "check": "#C58E78"})
-        if self._board_dirty:
-            self._draw_board_background(size, ox, oy, palette)
-            self._board_dirty = False
-        with self._static_group:
-            # Only repaint changed-square overlays, legal targets, and live pieces.
-            for square in last:
-                self._draw_square_overlay(square, ox, oy, size,
-                                          "#D9B7A8" if not self.screen.dark_mode else "#A98A7B")
-            for square in selected:
-                self._draw_square_overlay(square, ox, oy, size, palette["select"])
-            if king is not None:
-                self._draw_square_overlay(king, ox, oy, size, palette["check"])
-            for square in targets:
-                x, y = self._piece_position(square, ox, oy, size)
-                Color(0.12, 0.12, 0.12, 0.40)
-                Ellipse(pos=(x + size * .39, y + size * .39),
-                        size=(size * .22, size * .22))
-            for square, piece in board.piece_map().items():
-                if square in self.previous_move or square == self._drag_square:
-                    continue
-                x, y = self._piece_position(square, ox, oy, size)
-                self._draw_piece(piece.piece_type, piece.color, x, y, size)
-        if self._drag_piece is not None:
-            self._render_drag_piece()
-        else:
-            self._draw_animated_piece()
-
-    def _draw_square_overlay(self, square, ox, oy, size, color):
-        from kivy.graphics import Color, Rectangle
-        from kivy.utils import get_color_from_hex
-
-        x, y = self._piece_position(square, ox, oy, size)
-        with self._static_group:
-            Color(*get_color_from_hex(color))
-            Rectangle(pos=(x, y), size=(size, size))
-
-    def _draw_board_background(self, size, ox, oy, palette):
-        from kivy.graphics import Color, Rectangle, Line
-        from kivy.core.text import Label as CoreLabel
-        from kivy.graphics import Rectangle as TextureRectangle
-        from kivy.utils import get_color_from_hex
-
-        self._board_group.clear()
-        with self._board_group:
-            for rank in range(8):
-                for file in range(8):
-                    x, y = ox + file * size, oy + rank * size
-                    color = palette["light"] if (file + rank) % 2 == 0 else palette["dark"]
-                    Color(*get_color_from_hex(color))
-                    Rectangle(pos=(x, y), size=(size, size))
-            rail_color = (.28, .28, .27, .72) if self.screen.dark_mode else (.36, .35, .33, .72)
-            Color(*rail_color)
-            Line(rectangle=(ox, oy, size * 8, size * 8), width=1.15)
-            text_color = (.91, .90, .87, .88) if self.screen.dark_mode else (.20, .20, .19, .78)
-            for index in range(8):
-                file_char = chr(ord('a') + (7-index if self.flipped else index))
-                rank_char = str(8-index if not self.flipped else index+1)
-                for text, center in ((file_char, (ox+(index+.5)*size, oy-dp(7))),
-                                     (rank_char, (ox-dp(7), oy+(7.5-index)*size))):
-                    key = (text, round(max(dp(8), size*.105), 2), text_color)
-                    texture = _COORD_TEXTURES.get(key)
-                    if texture is None:
-                        label = CoreLabel(text=text, font_size=key[1], color=text_color)
-                        label.refresh()
-                        texture = label.texture
-                        _COORD_TEXTURES[key] = texture
-                    Color(*text_color)
-                    TextureRectangle(texture=texture,
-                                     pos=(center[0]-texture.width/2, center[1]-texture.height/2),
-                                     size=texture.size)
-
-    def _piece_position(self, square, ox, oy, size):
-        file, rank = chess.square_file(square), chess.square_rank(square)
-        if self.flipped:
-            file, rank = 7-file, 7-rank
-        return ox + file * size, oy + rank * size
-
-    def _draw_animated_piece(self):
-        self._moving_group.clear()
-        if len(self.previous_move) == 2 and self.animating:
-            self._prepare_animated_piece()
-
-    def _prepare_animated_piece(self):
-        size = min(self.width, self.height) / 8
-        ox = self.x + (self.width - size * 8) / 2
-        oy = self.y + (self.height - size * 8) / 2
-        source, destination = self.previous_move
-        piece = self.screen.engine.board.piece_at(destination)
-        if not piece:
-            return
-        self._move_start = self._animation_start_pos or self._piece_position(source, ox, oy, size)
-        end = self._piece_position(destination, ox, oy, size)
-        self._move_delta = (end[0]-self._move_start[0], end[1]-self._move_start[1])
-        self._moving_group.add(PushMatrix())
-        self._move_translation = Translate(x=self._move_start[0], y=self._move_start[1])
-        self._moving_group.add(self._move_translation)
-        self._draw_piece(piece.piece_type, piece.color, 0, 0, size, group=self._moving_group)
-        self._moving_group.add(PopMatrix())
-
-    def _update_animated_piece(self, *_):
-        if len(self.previous_move) != 2 or not self.animating:
-            return
-        if self._move_translation is None:
-            return
-        p = self.anim_progress
-        self._move_translation.x = self._move_start[0] + self._move_delta[0] * p
-        self._move_translation.y = self._move_start[1] + self._move_delta[1] * p
-
-    def _render_drag_piece(self, *_):
-        if self._drag_piece is None:
-            return
-        if self._drag_last_pos is None:
-            return
-        size = min(self.width, self.height) / 8
-        # The tall back-rank silhouettes have an uneven visual mass. Keep
-        # their centre directly under the finger; pawns retain the precise
-        # grab point, which already feels natural for their compact shape.
-        if self._drag_piece.piece_type == chess.PAWN:
-            offset_x, offset_y = self._drag_touch_offset
-        else:
-            offset_x = offset_y = 0
-        x = self._drag_last_pos[0] - offset_x - size / 2
-        y = self._drag_last_pos[1] - offset_y - size / 2
-        # Use absolute board coordinates while dragging. This avoids the
-        # canvas matrix offset that can misplace the taller back-rank pieces.
-        self._moving_group.clear()
-        self._drag_translate = None
-        self._draw_piece(self._drag_piece.piece_type, self._drag_piece.color,
-                         x, y, size, group=self._moving_group)
-    anim_progress = NumericProperty(1)
-
-    def _draw_piece(self, piece_type, white, x, y, size, group=None, pivot=None):
-        from kivy.core.image import Image as CoreImage
-        from kivy.graphics import Color, Rectangle
-
-        names = {
-            chess.PAWN: "pawn",
-            chess.KNIGHT: "knight",
-            chess.BISHOP: "bishop",
-            chess.ROOK: "rook",
-            chess.QUEEN: "queen",
-            chess.KING: "king",
-        }
-        key = ("white" if white else "black", names[piece_type])
-        texture = _PIECE_TEXTURES.get(key)
-        if texture is None:
-            project_root = Path(__file__).resolve().parents[2]
-            image_path = project_root / "assets" / "pieces" / f"{key[0]}-{key[1]}.png"
-            texture = CoreImage(str(image_path), keep_data=False).texture
-            _PIECE_TEXTURES[key] = texture
-        target = group or self._static_group
-        with target:
-            Color(1, 1, 1, 1)
-            Rectangle(texture=texture, pos=(x, y), size=(size, size))
-
-    def animate_move(self, move, done=None, start_pos=None):
-        self.previous_move = [move.from_square, move.to_square]
-        self._animation_start_pos = start_pos
-        self.anim_progress = 0
-        self.animating = True
-        Animation.cancel_all(self, "anim_progress")
-        self._move_translation = None
-        self._prepare_animated_piece()
-        animation = Animation(anim_progress=1, duration=.14 if start_pos else .22, t="out_cubic")
-        def finish(*_):
-            self.animating = False
-            self.previous_move = []
-            self._animation_start_pos = None
-            self.redraw()
-            if done:
-                done()
-        animation.bind(on_complete=finish)
-        animation.start(self)
-
-
-class GameScreen(FloatLayout):
+class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
     menu_open = BooleanProperty(False)
     popup_position = ListProperty([0, 0])
     status_text = StringProperty("YOUR TURN")
@@ -516,6 +57,14 @@ class GameScreen(FloatLayout):
         self._background_music = None
         self._move_sound = None
         self._game_started = False
+        self.difficulty = app.config.getdefault("game", "difficulty", "normal") if app is not None else "normal"
+        self.time_control = app.config.getint("game", "time_control") if app is not None and app.config.has_option("game", "time_control") else 0
+        self.board_palette = app.config.getdefault("game", "board_palette", "sage") if app is not None else "sage"
+        self.piece_style = app.config.getdefault("game", "piece_style", "pixel") if app is not None else "pixel"
+        self.remaining_time = {chess.WHITE: 0.0, chess.BLACK: 0.0}
+        self._clock_event = None
+        self._last_clock_tick = time.monotonic()
+        self._session_path = Path(app.user_data_dir) / "saved_game.json" if app is not None else None
         self._side_picker = None
         if app is not None:
             self.master_volume = app.config.getfloat("audio", "master_volume")
@@ -529,12 +78,13 @@ class GameScreen(FloatLayout):
         Clock.schedule_once(self._fit_board, 0)
         self._build_main_menu()
         self._show_main_menu()
+        self._restore_saved_game()
         self.refresh()
 
     def _build_main_menu(self):
         self.main_menu = MenuPanel(orientation='vertical', spacing=dp(12),
                                    padding=(dp(16), dp(16)), size_hint=(.90, None),
-                                   height=dp(390), pos_hint={'center_x': .5, 'center_y': .5})
+                                   height=dp(470), pos_hint={'center_x': .5, 'center_y': .5})
         self.main_menu_card = RoundCard(orientation='vertical', spacing=dp(8),
                                         padding=(dp(20), dp(18)),
                                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
@@ -561,7 +111,9 @@ class GameScreen(FloatLayout):
         self.main_menu_card.add_widget(self._main_menu_icon)
         self.main_menu_card.add_widget(self._main_menu_title)
         self.main_menu_card.add_widget(self._main_menu_subtitle)
-        entries = ((('Play', self._show_play_menu, True),
+        has_saved_game = self._has_saved_game()
+        entries = (((('Continue', self._continue_saved_game, has_saved_game),) if has_saved_game else ()) +
+                   (('Play', self._show_play_menu, True),
                     ('Settings', self._show_settings, True),
                     ('About', self._show_about, True)) if page == "home" else
                    (('Singleplayer', self._start_singleplayer, True),
@@ -813,7 +365,7 @@ class GameScreen(FloatLayout):
         self.menu_open = True
         self.menu_popup = self.ids.popup_layer
         popup_width = min(dp(236), max(dp(200), self.width - dp(32)))
-        popup_height = dp(120)
+        popup_height = dp(44 * 5)
         self.menu_popup.size = (popup_width, popup_height)
         self.menu_popup.padding = dp(0)
         self.menu_popup.spacing = dp(0)
@@ -828,6 +380,8 @@ class GameScreen(FloatLayout):
         self.menu_popup._items = []
         for text, callback in (("Settings", self._select_settings),
                                ("About", self._select_about),
+                               ("Undo move", self.undo_move),
+                               ("Export PGN", self.export_pgn),
                                ("Resign", self._select_resign)):
             item = PixelButton(text=text, font_size='15sp', size_hint=(1, 1), corner_radius=0,
                                fill_color=(.23, .23, .22, 1) if self.dark_mode else (.91, .90, .87, 1),
@@ -902,196 +456,33 @@ class GameScreen(FloatLayout):
         if self._game_started:
             self._confirm_resignation()
 
-    def _confirm_resignation(self):
-        view = ModalView(size_hint=(.90, None), height=dp(172), auto_dismiss=True,
-                         background='', background_color=(0, 0, 0, 0),
-                         overlay_color=(0, 0, 0, .42))
-        card = RoundCard(orientation='vertical', padding=(dp(20), dp(12), dp(20), dp(8)), spacing=dp(10),
-                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
-                         corner_radius=dp(24))
-        heading = Label(text='Resign this game?', size_hint_y=None, height=dp(34),
-                        bold=True, font_size='20sp', color=self.text_color, halign='left')
-        heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        message = Label(text='Your opponent will win the game.',
-                        size_hint_y=None, height=dp(36), color=self.muted_color,
-                        font_size='14sp', halign='left')
-        message.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        actions = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(8))
-        actions.add_widget(Widget())
-        keep = PixelButton(text='Cancel', size_hint=(None, 1), width=dp(112),
-                           corner_radius=dp(12), font_size='14sp')
-        keep.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-        keep.text_color = self.text_color
-        keep.bind(on_release=view.dismiss)
-        resign = PixelButton(text='Resign', size_hint=(None, 1), width=dp(96),
-                             corner_radius=dp(12), font_size='14sp')
-        resign.fill_color = self.accent_color
-        resign.text_color = self._accent_text_color(self.accent_color)
-        resign.bind(on_release=lambda *_: self._accept_resignation(view))
-        actions.add_widget(keep)
-        actions.add_widget(resign)
-        card.add_widget(heading)
-        card.add_widget(message)
-        card.add_widget(actions)
-        view.add_widget(card)
-        self._open_dialog_near_top(view, card)
-        card.opacity = 0
-        Animation(opacity=1, duration=.20, t='out_quad').start(card)
 
-    def _accept_resignation(self, view):
-        view.dismiss()
-        self._game_started = False
-        self.status_text = 'YOU RESIGNED'
-        self.result_title = 'You resigned'
-        self.result_detail = f'Opponent wins   ·   {len(self.engine.board.move_stack)} plies   ·   {self._elapsed_text()}'
-        self.result_visible = True
 
-    def _open_dialog_near_top(self, view, card):
-        # ModalView is an AnchorLayout and centers its direct child. Put the
-        # card in a full-screen FloatLayout so it stays centered independently
-        # of the dialog's internal padding and action layout.
-        width_hint = view.size_hint_x or .90
-        card_height = view.height
-        view.size_hint = (1, 1)
-        card.size_hint = (width_hint, None)
-        card.height = card_height
-        card.pos_hint = {"center_x": .5, "center_y": .5}
-        view.remove_widget(card)
-        container = FloatLayout(size_hint=(1, 1))
-        container.add_widget(card)
-        view.add_widget(container)
-        view._dialog_container = container
-        view.open()
 
-    def _show_settings(self):
-        from kivy.uix.slider import Slider
 
-        view = ModalView(size_hint=(.90, None), height=dp(300), auto_dismiss=True,
-                         background='', background_color=(0, 0, 0, 0),
-                         overlay_color=(0, 0, 0, .38))
-        card = RoundCard(orientation='vertical', padding=(dp(20), dp(14), dp(20), dp(8)), spacing=dp(12),
-                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
-                         corner_radius=dp(30))
-        heading = Label(text='Settings', size_hint_y=None, height=dp(40), bold=True,
-                        font_size='22sp', color=self.text_color, halign='left')
-        heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        volume_label = Label(text=f'Master volume  {round(self.master_volume * 100)}%',
-                             size_hint_y=None, height=dp(28), color=self.text_color,
-                             font_size='15sp', halign='left')
-        volume_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        slider = Slider(min=0, max=1, value=self.master_volume, size_hint_y=None,
-                        height=dp(34), cursor_size=(dp(24), dp(24)))
-        slider.value_track = True
-        slider.value_track_color = self.accent_color
-        self._settings_slider = slider
-        slider.bind(value=lambda _slider, value: self._update_volume_controls(
-            value, volume_label))
-        palette_label = Label(text='Accent color', size_hint_y=None, height=dp(22),
-                              color=self.text_color, font_size='14sp', halign='left')
-        palette_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        palette_row = BoxLayout(size_hint_y=None, height=dp(36), spacing=dp(4))
-        self._settings_accent_buttons = []
-        palette_options = [('system', 'Auto', None)] + [
-            (mode, mode.title(), color) for mode, color in ACCENT_PALETTES.items()]
-        for mode, caption, color in palette_options:
-            color = self.accent_color if mode == self.accent_mode else (
-                color if color is not None else get_system_accent_color(self.dark_mode) or
-                ((.83, .65, .55, 1) if self.dark_mode else (.65, .40, .31, 1)))
-            choice = AccentChoiceButton(text=caption, size_hint=(1, 1),
-                                        corner_radius=dp(10), font_size='10sp',
-                                        fill_color=color,
-                                        text_color=self._accent_text_color(color),
-                                        selected=mode == self.accent_mode)
-            choice._accent_mode = mode
-            choice.bind(on_release=lambda *_args, selected=mode: self._set_accent_mode(selected))
-            self._settings_accent_buttons.append(choice)
-            palette_row.add_widget(choice)
-        close = PixelButton(text='Done', size_hint_y=None, height=dp(46))
-        close.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-        close.text_color = self.text_color
-        close.ripple_color = (*self.accent_color[:3], .34)
-        close.bind(on_release=view.dismiss)
-        card.add_widget(heading)
-        card.add_widget(volume_label)
-        card.add_widget(slider)
-        card.add_widget(palette_label)
-        card.add_widget(palette_row)
-        card.add_widget(close)
-        view.add_widget(card)
-        self._open_dialog_near_top(view, card)
-        card.opacity = 0
-        Animation(opacity=1, duration=.20, t='out_quad').start(card)
 
-    def _update_volume_controls(self, value, label):
-        label.text = f'Master volume  {round(value * 100)}%'
-        self._set_master_volume(value)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     def on_touch_down(self, touch):
         if self.menu_open and self.menu_popup and not self.menu_popup.collide_point(*touch.pos):
             self._close_about_menu()
         return super().on_touch_down(touch)
 
-    def _show_about(self):
-        self.show_info('About Pixel Chess',
-                       'A minimalist chess game for focused play. Choose either side to play against the local opponent.\n\n'
-                       'HOW TO PLAY\nTap a piece, then tap one of its highlighted legal moves.\n\n'
-                       'MUSIC\nFriday Morning — Kevin MacLeod (CC BY 4.0).\n\n'
-                       'LICENSE\nGNU General Public License v3 (GPL-3.0).')
 
-    def show_info(self, title, message):
-        view = ModalView(size_hint=(.90, None), height=dp(390), auto_dismiss=True,
-                         background='', background_color=(0, 0, 0, 0),
-                         overlay_color=(0, 0, 0, .38))
-        card = RoundCard(orientation='vertical', padding=(dp(22), dp(14), dp(22), dp(8)), spacing=dp(12),
-                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
-                         corner_radius=dp(30))
-        heading = Label(text=title, size_hint_y=None, height=dp(42), bold=True,
-                        font_size='22sp', color=self.text_color, halign='left')
-        heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        body = Label(text=message, color=self.text_color, font_size='14sp',
-                     halign='left', valign='top')
-        body.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        github = PixelButton(text='', size_hint_y=None, height=dp(48))
-        github_row = BoxLayout(size_hint=(None, None), size=(dp(108), dp(28)),
-                               spacing=dp(9), pos_hint={'center_x': .5, 'center_y': .5})
-        github_icon = Image(source=("assets/github-mark-light.png" if self.dark_mode
-                                    else "assets/github-mark.png"),
-                            size_hint=(None, 1), width=dp(26), fit_mode='contain')
-        github_label = Label(text='GitHub', color=self.text_color, bold=True,
-                             font_size='15sp')
-        github_row.add_widget(github_icon)
-        github_row.add_widget(github_label)
-        github.add_widget(github_row)
-        github._github_icon = github_icon
-        github._github_label = github_label
-        def position_github_contents(_widget, *_args):
-            github_row.size = (dp(108), dp(28))
-            github_row.pos = (github.x + (github.width - github_row.width) / 2,
-                              github.y + (github.height - github_row.height) / 2)
-        github.bind(pos=position_github_contents, size=position_github_contents)
-        position_github_contents(github)
-        github.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-        github.text_color = self.text_color
-        github.ripple_color = (*self.accent_color[:3], .34)
-        github.bind(on_release=lambda *_: self._open_repository(view))
-        close = PixelButton(text='Close', size_hint_y=None, height=dp(48))
-        close.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-        close.text_color = self.text_color
-        close.ripple_color = (.90, .89, .86, .42) if self.dark_mode else (.25, .25, .23, .30)
-        close.bind(on_release=view.dismiss)
-        card.add_widget(heading)
-        card.add_widget(body)
-        card.add_widget(github)
-        card.add_widget(close)
-        view.add_widget(card)
-        self._open_dialog_near_top(view, card)
-        card.opacity = 0
-        Animation(opacity=1, duration=.20, t='out_quad').start(card)
 
     @staticmethod
-    def _open_repository(view):
-        webbrowser.open("https://github.com/mardner4ik/Pixel-Chess")
-        view.dismiss()
 
     def _fit_board(self, *_):
         if not hasattr(self, "board_widget") or "board_container" not in self.ids:
@@ -1113,6 +504,8 @@ class GameScreen(FloatLayout):
                 move = next((m for m in candidates if m.promotion == chess.QUEEN), candidates[0])
                 self.engine.play(move)
                 self._play_move_sound()
+                self._consume_clock(chess.WHITE if self.player_color else chess.BLACK)
+                self._save_game()
                 self.selection = None
                 self.board_widget.selected = []
                 self.board_widget.targets = []
@@ -1139,14 +532,14 @@ class GameScreen(FloatLayout):
     def _start_bot(self, *_):
         if self._game_started and self.engine.board.turn != self.player_color and not self.engine.status()[1]:
             snapshot = self.engine.board.copy(stack=True)
-            future = BOT_POOL.submit(self._calculate_bot_move, snapshot)
+            future = BOT_POOL.submit(self._calculate_bot_move, snapshot, self.difficulty)
             future.add_done_callback(lambda result: Clock.schedule_once(lambda _dt: self._apply_bot_result(result), 0))
 
     @staticmethod
-    def _calculate_bot_move(board):
+    def _calculate_bot_move(board, difficulty="normal"):
         engine = ChessEngine()
         engine.board = board
-        return engine.bot_move()
+        return engine.bot_move(difficulty)
 
     def _apply_bot_result(self, future):
         if not self._game_started or self.engine.board.turn == self.player_color or self.engine.status()[1]:
@@ -1159,6 +552,8 @@ class GameScreen(FloatLayout):
         if move is not None:
             self.engine.play(move)
             self._play_move_sound()
+            self._consume_clock(not self.player_color)
+            self._save_game()
             self.board_widget.selected = []
             self.board_widget.targets = []
             self.selection = None
@@ -1171,6 +566,9 @@ class GameScreen(FloatLayout):
         status, finished = self.engine.status()
         if not finished and status != "CHECK":
             status = "YOUR TURN" if self.engine.board.turn == self.player_color else "OPPONENT THINKING"
+        if self.time_control and self._game_started and not finished:
+            side = self.engine.board.turn
+            status = f"{status}  •  {self._clock_text(side)}"
         self.status_text = status
         if hasattr(self, "board_widget"):
             last = self.engine.board.peek() if self.engine.board.move_stack else None
@@ -1186,6 +584,10 @@ class GameScreen(FloatLayout):
         self.result_title = "Game over"
         self.result_detail = f"{status}   ·   {len(self.engine.board.move_stack)} plies   ·   {self._elapsed_text()}"
         self.result_visible = True
+        if self._clock_event is not None:
+            self._clock_event.cancel()
+            self._clock_event = None
+        self._clear_saved_game()
 
     def on_result_visible(self, _instance, visible):
         if not visible:
@@ -1198,7 +600,6 @@ class GameScreen(FloatLayout):
         if not self.result_visible:
             return
         if self.result_overlay is None:
-            from kivy.uix.modalview import ModalView
 
             overlay = ModalView(size_hint=(.88, None), height=dp(260), auto_dismiss=False,
                                 background='', background_color=(0, 0, 0, 0),
@@ -1246,9 +647,6 @@ class GameScreen(FloatLayout):
         self._populate_main_menu("home")
         self._show_main_menu()
 
-    def _elapsed_text(self):
-        seconds = int(time.monotonic() - self.started_at)
-        return f"{seconds // 60:02}:{seconds % 60:02}"
 
     def new_game(self):
         self._game_started = False
@@ -1322,10 +720,18 @@ class GameScreen(FloatLayout):
         self.board_widget.anim_progress = 1
         self.engine = ChessEngine()
         self.player_color = bool(player_color)
+        self.remaining_time = {chess.WHITE: float(self.time_control * 60),
+                               chess.BLACK: float(self.time_control * 60)}
+        self._last_clock_tick = time.monotonic()
+        if self._clock_event is not None:
+            self._clock_event.cancel()
+        if self.time_control:
+            self._clock_event = Clock.schedule_interval(self._tick_clock, .25)
         self.board_widget.flipped = not self.player_color
         self.started_at = time.monotonic()
         self.result_visible = False
         self._game_started = True
+        self._save_game()
         self.selection = None
         self.board_widget.selected = []
         self.board_widget.targets = []
