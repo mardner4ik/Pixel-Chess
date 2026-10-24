@@ -25,8 +25,9 @@ jobs:
       - name: Install Android build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
-            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev
+          sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf automake autopoint gettext \
+            libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 \
+            cmake libffi-dev libssl-dev
       - name: Build APK
         id: build-apk
         continue-on-error: true
