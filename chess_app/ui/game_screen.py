@@ -126,7 +126,7 @@ class GameScreen(BotThinkingMixin, AppearanceMixin, GameNavigationMixin, GameFlo
             self._opponent_identity.pos = (dp(14), self.height - dp(36))
 
     def choose_square(self, square):
-        if not self._game_started:
+        if not self._game_started or getattr(self, '_mp_move_pending', False):
             return
         board = self.engine.board
         if board.turn != self.player_color:
@@ -135,13 +135,16 @@ class GameScreen(BotThinkingMixin, AppearanceMixin, GameNavigationMixin, GameFlo
             candidates = [m for m in self.engine.legal_moves_from(self.selection) if m.to_square == square]
             if candidates:
                 move = next((m for m in candidates if m.promotion == chess.QUEEN), candidates[0])
+                if self._multiplayer_active:
+                    self.selection = None
+                    self.board_widget.selected = []
+                    self.board_widget.targets = []
+                    self._send_multiplayer_move(move)
+                    return
                 self.engine.play(move)
                 self._play_move_sound()
                 self._consume_clock(chess.WHITE if self.player_color else chess.BLACK)
-                if self._multiplayer_active:
-                    self._send_multiplayer_move(move.uci())
-                else:
-                    self._save_game()
+                self._save_game()
                 self.selection = None
                 self.board_widget.selected = []
                 self.board_widget.targets = []

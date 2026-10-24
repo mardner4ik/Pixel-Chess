@@ -517,7 +517,8 @@ class GameNavigationMixin:
 
     def _poll_multiplayer_state(self):
         room = getattr(self, '_mp_room', None)
-        if not room or not room.get('token') or getattr(self, '_mp_poll_inflight', False):
+        if (not room or not room.get('token') or getattr(self, '_mp_poll_inflight', False)
+                or getattr(self, '_mp_move_pending', False)):
             return
         self._mp_poll_inflight = True
         self._mp_async(lambda: self._mp_client.state(room['code'], room['token'], self._mp_seq),
@@ -536,6 +537,10 @@ class GameNavigationMixin:
 
     def _apply_multiplayer_state(self, state):
         if not getattr(self, '_mp_room', None):
+            return
+        # A state request can have started just before our move POST. Do not
+        # let its stale FEN roll the board back while that move is in flight.
+        if getattr(self, '_mp_move_pending', False):
             return
         self._mp_seq = max(self._mp_seq, state.get('seq', 0))
         own_color = self._mp_room.get('color')
@@ -614,6 +619,7 @@ class GameNavigationMixin:
 
     def _start_multiplayer_game(self, color, opponent, country):
         self._multiplayer_active = True
+        self._mp_move_pending = False
         self._opponent_identity.opacity = 1
         self._opponent_flag.country = country
         self._opponent_name.text = opponent
@@ -642,12 +648,42 @@ class GameNavigationMixin:
         self.refresh()
         self._begin_room_polling()
 
-    def _send_multiplayer_move(self, uci):
+    def _send_multiplayer_move(self, move):
         room = self._mp_room
-        if room:
-            self._mp_async(lambda: self._mp_client.send_move(room['code'], room['token'], uci),
-                           lambda _result: None,
-                           lambda _dt: self._reload_multiplayer_position())
+        if not room or getattr(self, '_mp_move_pending', False):
+            return
+        self._mp_move_pending = True
+        self.board_widget.disabled = True
+        self.status_text = 'SENDING MOVE…'
+        uci = move.uci()
+
+        def accepted(result):
+            if self._mp_room is not room or not self._multiplayer_active:
+                return
+            try:
+                if move not in self.engine.board.legal_moves:
+                    raise ValueError('Position changed before move confirmation')
+                self.engine.play(move)
+                if result.get('fen') and self.engine.board.fen() != result['fen']:
+                    self.engine.board.set_fen(result['fen'])
+                self._mp_seq = max(self._mp_seq, int(result.get('seq', 0)))
+                self._play_move_sound()
+                self.board_widget.animate_move(move)
+                self.refresh()
+            except (KeyError, TypeError, ValueError):
+                self._reload_multiplayer_position()
+                return
+            finally:
+                self._mp_move_pending = False
+                self.board_widget.disabled = False
+
+        def rejected(_dt):
+            self._mp_move_pending = False
+            self.board_widget.disabled = False
+            self._reload_multiplayer_position()
+
+        self._mp_async(lambda: self._mp_client.send_move(room['code'], room['token'], uci),
+                       accepted, rejected)
 
     def _reload_multiplayer_position(self):
         room = self._mp_room
@@ -656,12 +692,15 @@ class GameNavigationMixin:
         def sync(state):
             try:
                 self.engine.board.set_fen(state['fen'])
+                self._mp_seq = max(self._mp_seq, int(state.get('seq', 0)))
                 self.selection = None
                 self.board_widget.selected = []
                 self.board_widget.targets = []
+                self.board_widget.disabled = False
                 self.refresh()
-                self._show_toast('Move rejected; position resynchronized')
+                self._show_toast('Move not accepted; board synchronized')
             except (KeyError, ValueError):
+                self.board_widget.disabled = False
                 self._show_toast('Could not resynchronize the game')
         self._mp_async(lambda: self._mp_client.state(room['code'], room['token'], 0), sync)
 
@@ -671,6 +710,8 @@ class GameNavigationMixin:
             self._mp_poll_event.cancel()
             self._mp_poll_event = None
         self._multiplayer_active = False
+        self._mp_move_pending = False
+        self.board_widget.disabled = False
         self._opponent_identity.opacity = 0
         self._mp_room_finished = True
         self._mp_room = None
@@ -686,6 +727,8 @@ class GameNavigationMixin:
             self._mp_poll_event.cancel()
             self._mp_poll_event = None
         self._multiplayer_active = False
+        self._mp_move_pending = False
+        self.board_widget.disabled = False
         self._opponent_identity.opacity = 0
         if room and room.get('token') and not getattr(self, '_mp_room_finished', False):
             self._mp_async(lambda: self._mp_client.leave_room(room['code'], room['token']))

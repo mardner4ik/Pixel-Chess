@@ -279,7 +279,11 @@ class ChessEngine:
             return f"CHECKMATE • {winner} WINS", True
         if self.board.is_stalemate():
             return "STALEMATE • DRAW", True
-        if self.board.is_insufficient_material() or self.board.can_claim_draw():
+        # A claimable threefold/50-move draw is not automatic. Treating
+        # can_claim_draw() as game over ended live multiplayer games while the
+        # server still accepted moves. Only automatic draws finish the round.
+        if (self.board.is_insufficient_material() or self.board.is_seventyfive_moves()
+                or self.board.is_fivefold_repetition()):
             return "DRAW", True
         if self.board.is_check():
             return "CHECK", False
