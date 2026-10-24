@@ -49,7 +49,7 @@ Open [GitHub Releases](https://github.com/mardner4ik/Pixel-Chess/releases/latest
 | --- | --- | --- |
 | Android | `pixelchess-*-arm64-v8a-debug.apk` | Download the APK and install it on an ARM64 Android device. |
 | Linux x86_64 | `PixelChess-*-linux-x86_64.tar.gz` | Extract it and run `./PixelChess/PixelChess`, or use `./install.sh` to add it to your applications menu. |
-| Windows | `PixelChess-*-Setup.exe` | Run the installer and launch Pixel Chess from the Start menu. |
+| Windows | `PixelChess-*-Setup.exe` | The first Windows installer is planned for v1.2.2. Run it and launch Pixel Chess from the Start menu. |
 
 The Linux bundle needs a 64-bit glibc system and system OpenGL/input libraries. On Arch or Artix, install Mesa and `mtdev` if they are not already present. The Windows installer is built on a Windows runner; Linux release builds run on Ubuntu.
 
@@ -76,6 +76,10 @@ The app connects to a separate Flask relay over HTTPS. The service keeps active 
 4. Choose a nickname. The app detects the displayed country from the player's public IP and the room lobby lists open public rooms.
 
 Create a public room for the lobby or a private room for code-only invites. The host starts the game after the guest joins. The multiplayer service has its own dependencies and deployment instructions in its separate project directory.
+
+### Test on a local network
+
+Run Flask on the computer with `python app.py`, and keep the computer and phone on the same Wi-Fi network. In the app, connect to `http://<computer-lan-ip>:5000` (for example, `http://192.168.0.104:5000`). Do not use `https://` for the local Flask development server: it serves plain HTTP. Use the HTTPS URL only after deploying behind PythonAnywhere's HTTPS endpoint. If the phone cannot connect, allow inbound TCP port 5000 through the computer's firewall.
 
 ## Build
 

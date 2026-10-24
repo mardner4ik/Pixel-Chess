@@ -12,6 +12,8 @@ from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.scrollview import ScrollView
 from concurrent.futures import ThreadPoolExecutor
 from kivy.app import App
+from urllib.parse import urlsplit
+import ipaddress
 import time
 
 import chess
@@ -193,15 +195,17 @@ class GameNavigationMixin:
     def _show_server_setup(self):
         self._populate_main_menu('multiplayer_server')
         self._main_menu_title.text = 'Connect to server'
-        self._main_menu_subtitle.text = 'Enter your PythonAnywhere HTTPS address'
+        self._main_menu_subtitle.text = 'HTTPS online · HTTP on your local Wi-Fi'
         form = self._mp_centered_form(.88)
         config = self._multiplayer_config()
         url = TextInput(text=config.get('multiplayer', 'server_url') if config else '',
-                        hint_text='https://yourname.pythonanywhere.com', multiline=False,
+                        hint_text='https://… or http://192.168.1.10:5000', multiline=False,
                         size_hint_y=None, height=dp(54), padding=(dp(14), dp(14)),
                         foreground_color=self.text_color,
                         background_color=((.12,.12,.11,1) if self.dark_mode else (.93,.92,.89,1)))
-        form.add_widget(self._mp_label('The server stores rooms and relays moves over HTTPS.', dp(42), '16sp'))
+        form.add_widget(self._mp_label(
+            'PythonAnywhere uses HTTPS. Local Flask uses HTTP and your PC’s Wi-Fi IP.',
+            dp(48), '16sp'))
         form.add_widget(url)
         form.add_widget(self._mp_button('Connect', lambda: self._connect_multiplayer_server(url.text), True))
         form.add_widget(self._mp_button('Back', self._show_play_menu))
@@ -209,8 +213,8 @@ class GameNavigationMixin:
 
     def _connect_multiplayer_server(self, url):
         url = url.strip().rstrip('/')
-        if not url.startswith('https://') and not url.startswith('http://127.0.0.1'):
-            self._show_toast('Enter an HTTPS server address')
+        if not self._is_allowed_multiplayer_url(url):
+            self._show_toast('Use HTTPS online or HTTP with a local IP')
             return
         config = self._multiplayer_config()
         if config:
@@ -225,6 +229,24 @@ class GameNavigationMixin:
             page = self._show_multiplayer_profile if not self._mp_nickname else self._show_multiplayer_lobby
             self._animate_multiplayer_page(page)
         self._mp_async(self._mp_client.profile, connected)
+
+    @staticmethod
+    def _is_allowed_multiplayer_url(url):
+        try:
+            parsed = urlsplit(url)
+            if not parsed.hostname or parsed.username or parsed.password:
+                return False
+            if parsed.scheme == 'https':
+                return True
+            if parsed.scheme != 'http':
+                return False
+            hostname = parsed.hostname.lower().rstrip('.')
+            if hostname == 'localhost':
+                return True
+            address = ipaddress.ip_address(hostname)
+            return address.is_private or address.is_loopback or address.is_link_local
+        except ValueError:
+            return False
 
     def _show_multiplayer_profile(self):
         self._populate_main_menu('multiplayer_profile')

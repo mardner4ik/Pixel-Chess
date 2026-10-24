@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   android:
     name: Android APK (built locally)
@@ -83,6 +87,7 @@ jobs:
   windows:
     name: Windows installer
     runs-on: windows-latest
+    if: github.ref_name == 'v1.2.2'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -114,6 +119,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs: [android, linux, windows]
+    if: always() && needs.android.result == 'success' && needs.linux.result == 'success' && (needs.windows.result == 'success' || needs.windows.result == 'skipped')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
