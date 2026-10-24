@@ -38,7 +38,7 @@ jobs:
           buildozer android debug) 2>&1 | tee /tmp/android-build.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            details=$(tail -n 35 /tmp/android-build.log | tr '\n' ' ' | cut -c1-4000)
+            details=$(grep -Ei 'error:|failed|exception|traceback|fatal|no such file|undefined reference|not found' /tmp/android-build.log | tail -n 30 | tr '\n' ' ' | cut -c1-4000)
             details=${details//'%'/'%25'}
             details=${details//$'\r'/'%0D'}
             details=${details//$'\n'/'%0A'}
