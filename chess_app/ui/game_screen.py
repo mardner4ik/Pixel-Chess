@@ -12,6 +12,7 @@ from kivy.properties import ListProperty, StringProperty, NumericProperty, Boole
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.widget import Widget
+from kivy.uix.modalview import ModalView
 from kivy.uix.label import Label
 from kivy.uix.image import Image
 
