@@ -7,6 +7,7 @@ from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.properties import ListProperty, NumericProperty, BooleanProperty, StringProperty
 from kivy.uix.widget import Widget
+from kivy.graphics import Canvas, PushMatrix, PopMatrix, Translate
 from concurrent.futures import ThreadPoolExecutor
 
 BOT_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chess-bot")

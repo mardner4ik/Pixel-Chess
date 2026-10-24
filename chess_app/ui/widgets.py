@@ -98,14 +98,3 @@ class RoundCard(BoxLayout):
 
     def _sync_fill(self, *_):
         self._fill_instruction.rgba = self.fill_color
-
-
-BOT_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chess-bot")
-_COORD_TEXTURES = {}
-_PIECE_TEXTURES = {}
-ACCENT_PALETTES = {
-    "blue": (.26, .43, .91, 1),
-    "green": (.15, .53, .35, 1),
-    "violet": (.52, .34, .78, 1),
-    "amber": (.76, .43, .04, 1),
-}
