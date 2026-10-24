@@ -42,6 +42,11 @@ class PixelButton(Button):
         return result
 
     def on_touch_down(self, touch):
+        # ButtonBehavior still grabs touches for disabled buttons in some Kivy
+        # versions. Return early so collapsed picker controls cannot sit on top
+        # of the Advanced button and swallow its touch.
+        if self.disabled:
+            return False
         if self.collide_point(*touch.pos) and self.disabled is False:
             self._pressed_touch = touch
             if self._ripple_fade is not None:
@@ -185,6 +190,15 @@ class SettingsIcon(Widget):
                     Line(points=(cx+cos(start)*r*.34, cy+sin(start)*r*.34,
                                  cx+cos(start)*r*.72, cy+sin(start)*r*.72),
                          width=width*1.3, cap="round")
+            elif self.icon == "chevron":
+                Line(points=(cx-r*.20, cy+r*.38, cx+r*.18, cy,
+                             cx-r*.20, cy-r*.38), width=width, cap="round",
+                     joint="round")
+            elif self.icon in {"down", "up"}:
+                points = ((cx-r*.40, cy+r*.18, cx, cy-r*.18, cx+r*.40, cy+r*.18)
+                          if self.icon == "down" else
+                          (cx-r*.40, cy-r*.18, cx, cy+r*.18, cx+r*.40, cy-r*.18))
+                Line(points=points, width=width, cap="round", joint="round")
             elif self.icon == "volume":
                 left = cx-r*.48
                 Triangle(points=(left, cy-r*.20, left+r*.42, cy-r*.20, left+r*.42, cy+r*.20))
@@ -215,17 +229,15 @@ class IconActionButton(PixelButton):
                                         size_hint=(None, None), size=(dp(22), dp(22)))
         self.title_label = Label(text=title, color=self.text_color,
                                  font_size="14sp", bold=True, halign="left",
-                                 valign="middle", shorten=True, shorten_from="right",
+                                 valign="middle",
                                  size_hint=(None, None))
         self.title_label.bind(size=lambda widget, size: setattr(widget, "text_size", size))
         self.detail_label = Label(text=detail, color=self.muted_color,
                                   font_size="12sp", halign="left", valign="middle",
-                                  shorten=True, shorten_from="right",
                                   size_hint=(None, None))
         self.detail_label.bind(size=lambda widget, size: setattr(widget, "text_size", size))
-        self.arrow_label = Label(text="›", color=self.muted_color,
-                                 font_size="22sp", size_hint=(None, None),
-                                 size=(dp(18), dp(30)))
+        self.arrow_label = SettingsIcon(icon="chevron", tint=self.muted_color,
+                                        size_hint=(None, None), size=(dp(16), dp(16)))
         self.content.add_widget(self.icon_widget)
         self.content.add_widget(self.title_label)
         self.content.add_widget(self.detail_label)
@@ -247,7 +259,7 @@ class IconActionButton(PixelButton):
         icon_size = min(dp(22), max(dp(18), self.height - dp(16)))
         self.icon_widget.size = (icon_size, icon_size)
         self.icon_widget.pos = (self.x + inset, self.center_y - icon_size / 2)
-        arrow_width = dp(18)
+        arrow_width = dp(16)
         self.arrow_label.pos = (self.right - dp(10) - arrow_width,
                                 self.center_y - self.arrow_label.height / 2)
         text_x = self.icon_widget.right + dp(9)
@@ -263,5 +275,5 @@ class IconActionButton(PixelButton):
             return
         self.title_label.color = self.text_color
         self.detail_label.color = self.muted_color
-        self.arrow_label.color = self.muted_color
+        self.arrow_label.tint = self.muted_color
         self.icon_widget.tint = self.icon_color

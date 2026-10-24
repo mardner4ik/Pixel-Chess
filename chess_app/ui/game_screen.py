@@ -784,13 +784,18 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             button.bind(on_release=lambda *_args, selected=level: self._select_difficulty(selected))
             choice_buttons[level] = button
             choices_row.add_widget(button)
-        advanced = PixelButton(text="Advanced  ▾", size_hint_y=None, height=dp(48),
+        advanced = PixelButton(text="Advanced", size_hint_y=None, height=dp(48),
                                corner_radius=dp(14), font_size="14sp")
         advanced_icon = SettingsIcon(icon="settings", size_hint=(None, None),
                                      size=(dp(20), dp(20)), tint=self.accent_color)
+        advanced_indicator = SettingsIcon(icon="down", size_hint=(None, None),
+                                          size=(dp(16), dp(16)), tint=self.muted_color)
         advanced.add_widget(advanced_icon)
+        advanced.add_widget(advanced_indicator)
         def position_advanced_icon(button, *_args):
             advanced_icon.pos = (button.x + dp(14), button.center_y - advanced_icon.height / 2)
+            advanced_indicator.pos = (button.right - dp(28),
+                                      button.center_y - advanced_indicator.height / 2)
         advanced.bind(pos=position_advanced_icon, size=position_advanced_icon)
         advanced_options = BoxLayout(orientation="vertical", size_hint_y=None,
                                      height=dp(0), spacing=dp(6), opacity=0)
@@ -832,6 +837,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         view._difficulty_card = card
         view._advanced_options = advanced_options
         view._advanced_button = advanced
+        view._advanced_indicator = advanced_indicator
         view._thinking_toggle = thinking_toggle
         view._time_buttons = time_buttons
         view._advanced_controls = [thinking_toggle, *time_buttons.values()]
@@ -875,7 +881,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         options.opacity = 1 if expanded else 0
         for control in view._advanced_controls:
             control.disabled = not expanded
-        view._advanced_button.text = "Advanced  ▴" if expanded else "Advanced  ▾"
+        view._advanced_indicator.icon = "up" if expanded else "down"
         view._difficulty_card.height = dp(410 if expanded else 320)
 
     def _refresh_advanced_picker(self):
