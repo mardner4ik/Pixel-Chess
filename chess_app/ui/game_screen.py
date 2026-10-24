@@ -21,7 +21,8 @@ from kivy.uix.image import Image
 
 from chess_app.core.engine import ChessEngine
 from chess_app.ui.system_theme import get_system_accent_color, is_dark_mode
-from chess_app.ui.widgets import PixelButton, MenuIconButton, AccentChoiceButton, MenuPanel, RoundCard, ToastMessage
+from chess_app.ui.widgets import (PixelButton, MenuIconButton, AccentChoiceButton,
+                                  MenuPanel, RoundCard, ToastMessage, SettingsIcon)
 from chess_app.ui.board import ChessBoard, ACCENT_PALETTES, BOARD_PALETTES, BOT_POOL
 from chess_app.ui.dialogs import GameDialogsMixin
 from chess_app.ui.session import GameSessionMixin
@@ -785,16 +786,24 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             choices_row.add_widget(button)
         advanced = PixelButton(text="Advanced  ▾", size_hint_y=None, height=dp(48),
                                corner_radius=dp(14), font_size="14sp")
+        advanced_icon = SettingsIcon(icon="settings", size_hint=(None, None),
+                                     size=(dp(20), dp(20)), tint=self.accent_color)
+        advanced.add_widget(advanced_icon)
+        def position_advanced_icon(button, *_args):
+            advanced_icon.pos = (button.x + dp(14), button.center_y - advanced_icon.height / 2)
+        advanced.bind(pos=position_advanced_icon, size=position_advanced_icon)
         advanced_options = BoxLayout(orientation="vertical", size_hint_y=None,
                                      height=dp(0), spacing=dp(6), opacity=0)
         thinking_toggle = PixelButton(text="Bot thinking: 4–15 seconds", size_hint_y=None,
                                       height=dp(38), corner_radius=dp(12), font_size="13sp")
+        thinking_toggle.disabled = True
         thinking_toggle.bind(on_release=lambda *_: self._toggle_bot_thinking(thinking_toggle))
         advanced_options.add_widget(thinking_toggle)
         time_row = BoxLayout(size_hint_y=None, height=dp(38), spacing=dp(5))
         time_buttons = {}
         for minutes, caption in ((0, "Off"), (3, "3 min"), (5, "5 min"), (10, "10 min")):
             option = PixelButton(text=caption, corner_radius=dp(11), font_size="12sp")
+            option.disabled = True
             option.bind(on_release=lambda *_args, value=minutes: self._set_picker_time(value))
             time_buttons[minutes] = option
             time_row.add_widget(option)
@@ -825,6 +834,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         view._advanced_button = advanced
         view._thinking_toggle = thinking_toggle
         view._time_buttons = time_buttons
+        view._advanced_controls = [thinking_toggle, *time_buttons.values()]
         self._difficulty_picker = view
         self._refresh_difficulty_choices()
         self._refresh_advanced_picker()
@@ -863,6 +873,8 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         expanded = options.height <= dp(1)
         options.height = dp(86) if expanded else dp(0)
         options.opacity = 1 if expanded else 0
+        for control in view._advanced_controls:
+            control.disabled = not expanded
         view._advanced_button.text = "Advanced  ▴" if expanded else "Advanced  ▾"
         view._difficulty_card.height = dp(410 if expanded else 320)
 

@@ -138,6 +138,7 @@ class SettingsIcon(Widget):
 
     def _redraw_icon(self, *_):
         from kivy.graphics import Color, Ellipse, Line, RoundedRectangle, Triangle
+        from math import cos, radians, sin
 
         self.canvas.clear()
         x, y = self.pos
@@ -177,6 +178,13 @@ class SettingsIcon(Widget):
                                       (-.24, -.28, .19), (.32, -.25, .16)):
                     Ellipse(pos=(cx+ox*r-scale*r, cy+oy*r-scale*r),
                             size=(2*scale*r, 2*scale*r))
+            elif self.icon == "settings":
+                Ellipse(pos=(cx-r*.30, cy-r*.30), size=(r*.60, r*.60))
+                for angle in range(0, 360, 45):
+                    start = radians(angle)
+                    Line(points=(cx+cos(start)*r*.34, cy+sin(start)*r*.34,
+                                 cx+cos(start)*r*.72, cy+sin(start)*r*.72),
+                         width=width*1.3, cap="round")
             elif self.icon == "volume":
                 left = cx-r*.48
                 Triangle(points=(left, cy-r*.20, left+r*.42, cy-r*.20, left+r*.42, cy+r*.20))
@@ -207,19 +215,20 @@ class IconActionButton(PixelButton):
                                         size_hint=(None, None), size=(dp(22), dp(22)))
         self.title_label = Label(text=title, color=self.text_color,
                                  font_size="14sp", bold=True, halign="left",
-                                 valign="bottom", shorten=True, shorten_from="right")
+                                 valign="middle", shorten=True, shorten_from="right",
+                                 size_hint=(None, None))
+        self.title_label.bind(size=lambda widget, size: setattr(widget, "text_size", size))
         self.detail_label = Label(text=detail, color=self.muted_color,
-                                  font_size="12sp", halign="left", valign="top",
-                                  shorten=True, shorten_from="right")
-        self.text_stack = BoxLayout(orientation="vertical", spacing=-dp(1),
-                                    size_hint=(None, None))
-        self.text_stack.add_widget(self.title_label)
-        self.text_stack.add_widget(self.detail_label)
+                                  font_size="12sp", halign="left", valign="middle",
+                                  shorten=True, shorten_from="right",
+                                  size_hint=(None, None))
+        self.detail_label.bind(size=lambda widget, size: setattr(widget, "text_size", size))
         self.arrow_label = Label(text="›", color=self.muted_color,
                                  font_size="22sp", size_hint=(None, None),
                                  size=(dp(18), dp(30)))
         self.content.add_widget(self.icon_widget)
-        self.content.add_widget(self.text_stack)
+        self.content.add_widget(self.title_label)
+        self.content.add_widget(self.detail_label)
         self.content.add_widget(self.arrow_label)
         self.add_widget(self.content)
         self.bind(pos=self._layout_content, size=self._layout_content,
@@ -243,9 +252,11 @@ class IconActionButton(PixelButton):
                                 self.center_y - self.arrow_label.height / 2)
         text_x = self.icon_widget.right + dp(9)
         text_right = self.arrow_label.x - dp(6)
-        text_height = max(dp(28), self.height - dp(8))
-        self.text_stack.pos = (text_x, self.center_y - text_height / 2)
-        self.text_stack.size = (max(dp(20), text_right - text_x), text_height)
+        text_width = max(dp(20), text_right - text_x)
+        self.title_label.pos = (text_x, self.center_y + dp(1))
+        self.title_label.size = (text_width, dp(19))
+        self.detail_label.pos = (text_x, self.center_y - dp(19))
+        self.detail_label.size = (text_width, dp(17))
 
     def _sync_content_colors(self, *_):
         if not hasattr(self, "title_label"):
