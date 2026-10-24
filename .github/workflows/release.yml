@@ -27,6 +27,22 @@ jobs:
           path: prebuilt-release-assets/*.apk
           if-no-files-found: error
           retention-days: 7
+      - name: Attach Windows installer built with Wine
+        if: github.ref_name == 'v1.2.3'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: prebuilt-release-assets/*.exe
+          if-no-files-found: error
+          retention-days: 7
+      - name: Attach standalone multiplayer server
+        if: github.ref_name == 'v1.2.3'
+        uses: actions/upload-artifact@v4
+        with:
+          name: multiplayer-server
+          path: prebuilt-release-assets/*multiplayer-server*.zip
+          if-no-files-found: error
+          retention-days: 7
 
   linux:
     name: Linux x86_64 bundle

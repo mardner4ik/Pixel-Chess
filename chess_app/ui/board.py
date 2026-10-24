@@ -7,6 +7,8 @@ from kivy.metrics import dp
 from kivy.properties import ListProperty, NumericProperty, BooleanProperty, StringProperty
 from kivy.uix.widget import Widget
 from kivy.graphics import Canvas, PushMatrix, PopMatrix, Translate
+from kivy.core.window import Window
+from kivy.utils import platform as kivy_platform
 from concurrent.futures import ThreadPoolExecutor
 from chess_app.paths import asset_path
 
@@ -35,6 +37,10 @@ class ChessBoard(Widget):
     animating = BooleanProperty(False)
     previous_move = ListProperty([])
     flipped = BooleanProperty(False)
+    remote_visible = BooleanProperty(False)
+    remote_x = NumericProperty(-1)
+    remote_y = NumericProperty(-1)
+    remote_drag_square = NumericProperty(-1)
 
     def __init__(self, screen, **kwargs):
         super().__init__(**kwargs)
@@ -53,6 +59,7 @@ class ChessBoard(Widget):
         self._board_group = Canvas()
         self._static_group = Canvas()
         self._moving_group = Canvas()
+        self._presence_group = Canvas()
         self._move_translation = None
         self._board_dirty = True
         # Coalesce bursts of state changes into a single canvas rebuild per frame.
@@ -60,9 +67,17 @@ class ChessBoard(Widget):
         self.canvas.add(self._board_group)
         self.canvas.add(self._static_group)
         self.canvas.add(self._moving_group)
+        self.canvas.add(self._presence_group)
+        self._tracks_mouse = kivy_platform in {'linux', 'win', 'macosx'}
+        if self._tracks_mouse:
+            Window.bind(mouse_pos=self._on_mouse_pos)
         self.bind(pos=self._geometry_changed, size=self._geometry_changed,
                   flipped=self._orientation_changed)
         self.bind(anim_progress=self._update_animated_piece)
+        self.bind(remote_visible=self._remote_presence_changed,
+                  remote_x=self._remote_presence_changed,
+                  remote_y=self._remote_presence_changed,
+                  remote_drag_square=self._remote_presence_changed)
         self.redraw()
 
     def _geometry_changed(self, *_):
@@ -76,6 +91,51 @@ class ChessBoard(Widget):
     def invalidate_board(self):
         self._board_dirty = True
         self.redraw()
+
+    def _remote_presence_changed(self, *_):
+        self.redraw()
+
+    def _presence_coordinates(self, pos):
+        side = min(self.width, self.height)
+        ox = self.x + (self.width - side) / 2
+        oy = self.y + (self.height - side) / 2
+        if side <= 0:
+            return None
+        x = min(1.0, max(0.0, (pos[0] - ox) / side))
+        y = min(1.0, max(0.0, (pos[1] - oy) / side))
+        if self.flipped:
+            x, y = 1.0 - x, 1.0 - y
+        return x, y
+
+    def _on_mouse_pos(self, _window, pos):
+        if not self._tracks_mouse or not getattr(self.screen, '_multiplayer_active', False):
+            return
+        if self.collide_point(*pos):
+            point = self._presence_coordinates(pos)
+            if point:
+                drag = self._drag_square if self._drag_piece is not None else None
+                self.screen._queue_mp_presence(point[0], point[1], drag, True)
+        else:
+            self.screen._queue_mp_presence(0, 0, None, False)
+
+    def set_remote_presence(self, presence):
+        presence = presence if isinstance(presence, dict) else {}
+        if not presence.get('visible'):
+            self.remote_visible = False
+            self.remote_drag_square = -1
+            return
+        try:
+            x = min(1.0, max(0.0, float(presence['x'])))
+            y = min(1.0, max(0.0, float(presence['y'])))
+            drag = presence.get('drag_square')
+            drag = int(drag) if drag is not None else -1
+        except (KeyError, TypeError, ValueError):
+            self.remote_visible = False
+            return
+        self.remote_drag_square = drag
+        self.remote_visible = True
+        Animation.cancel_all(self, 'remote_x', 'remote_y')
+        Animation(remote_x=x, remote_y=y, duration=.18, t='linear').start(self)
 
     def square_at(self, pos):
         x, y = pos[0] - self.x, pos[1] - self.y
@@ -140,6 +200,10 @@ class ChessBoard(Widget):
         # Follow raw input; easing each pointer event creates visible lag.
         self._drag_last_pos = (touch.x, touch.y)
         self._render_drag_piece()
+        if not self._tracks_mouse and getattr(self.screen, '_multiplayer_active', False):
+            point = self._presence_coordinates(touch.pos)
+            if point:
+                self.screen._queue_mp_presence(point[0], point[1], self._drag_square, True)
         return True
 
     def on_touch_up(self, touch):
@@ -180,6 +244,8 @@ class ChessBoard(Widget):
                 # destination without ever lifting or hiding it mid-gesture.
                 if start_square is not None:
                     self.screen.choose_square(start_square)
+            if not self._tracks_mouse and getattr(self.screen, '_multiplayer_active', False):
+                self.screen._queue_mp_presence(0, 0, None, False)
             self.redraw()
             return True
         return super().on_touch_up(touch)
@@ -194,10 +260,12 @@ class ChessBoard(Widget):
         if getattr(self.screen, "_in_main_menu", False):
             self._static_group.clear()
             self._moving_group.clear()
+            self._presence_group.clear()
             return
 
         self._static_group.clear()
         self._moving_group.clear()
+        self._presence_group.clear()
         self._drag_translate = None
         size = min(self.width, self.height) / 8
         ox = self.x + (self.width - size * 8) / 2
@@ -238,6 +306,30 @@ class ChessBoard(Widget):
             self._render_drag_piece()
         else:
             self._draw_animated_piece()
+        self._draw_remote_presence(size, ox, oy)
+
+    def _draw_remote_presence(self, cell_size, ox, oy):
+        from kivy.graphics import Color, Ellipse, Line, Triangle
+
+        if not self.remote_visible or not (0 <= self.remote_x <= 1 and 0 <= self.remote_y <= 1):
+            return
+        x, y = self.remote_x, self.remote_y
+        if self.flipped:
+            x, y = 1.0 - x, 1.0 - y
+        px, py = ox + x * cell_size * 8, oy + y * cell_size * 8
+        accent = getattr(self.screen, 'accent_color', (.82, .48, .12, 1))
+        with self._presence_group:
+            Color(accent[0], accent[1], accent[2], .24)
+            Ellipse(pos=(px-dp(14), py-dp(14)), size=(dp(28), dp(28)))
+            Color(accent[0], accent[1], accent[2], .92)
+            Line(circle=(px, py, dp(9)), width=dp(1.4))
+            Triangle(points=(px-dp(4),py+dp(5),px-dp(1),py-dp(6),px+dp(5),py+dp(1)))
+            square = int(self.remote_drag_square)
+            piece = self.screen.engine.board.piece_at(square) if 0 <= square < 64 else None
+            if piece:
+                self._draw_piece(piece.piece_type, piece.color,
+                                 px-cell_size*.46, py-cell_size*.46, cell_size,
+                                 group=self._presence_group, alpha=.48)
 
     def _draw_square_overlay(self, square, ox, oy, size, color):
         from kivy.graphics import Color, Rectangle
@@ -343,7 +435,7 @@ class ChessBoard(Widget):
                          x, y, size, group=self._moving_group)
     anim_progress = NumericProperty(1)
 
-    def _draw_piece(self, piece_type, white, x, y, size, group=None, pivot=None):
+    def _draw_piece(self, piece_type, white, x, y, size, group=None, pivot=None, alpha=1):
         from kivy.core.image import Image as CoreImage
         from kivy.graphics import Color, Rectangle
 
@@ -366,7 +458,7 @@ class ChessBoard(Widget):
             _PIECE_TEXTURES[key] = texture
         target = group or self._static_group
         with target:
-            Color(1, 1, 1, 1)
+            Color(1, 1, 1, alpha)
             Rectangle(texture=texture, pos=(x, y), size=(size, size))
 
     def animate_move(self, move, done=None, start_pos=None):

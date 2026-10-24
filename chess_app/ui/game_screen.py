@@ -93,15 +93,18 @@ class GameScreen(BotThinkingMixin, AppearanceMixin, GameNavigationMixin, GameFlo
         self.ids.board_container.add_widget(self.board_widget)
         from kivy.uix.boxlayout import BoxLayout
         from kivy.uix.label import Label
-        from chess_app.ui.widgets import CountryFlag
+        from chess_app.ui.widgets import CountryFlag, DeviceIcon
         self._opponent_identity = BoxLayout(orientation='horizontal', spacing=dp(7),
-                                            size_hint=(None, None), size=(dp(170), dp(25)),
+                                            size_hint=(None, None), size=(dp(198), dp(25)),
                                             opacity=0)
         self._opponent_flag = CountryFlag(country='ZZ', size_hint=(None, None), size=(dp(29), dp(19)))
+        self._opponent_device = DeviceIcon(device='mobile', tint=self.muted_color,
+                                           size_hint=(None,None), size=(dp(18),dp(22)))
         self._opponent_name = Label(text='', color=self.text_color, font_size='12sp', bold=True,
-                                    halign='left', valign='middle', size_hint_x=None, width=dp(130))
+                                    halign='left', valign='middle', size_hint_x=None, width=dp(132))
         self._opponent_name.bind(size=lambda w, s: setattr(w, 'text_size', s))
         self._opponent_identity.add_widget(self._opponent_flag)
+        self._opponent_identity.add_widget(self._opponent_device)
         self._opponent_identity.add_widget(self._opponent_name)
         self.add_widget(self._opponent_identity)
         self.bind(size=self._fit_board)

@@ -220,6 +220,39 @@ class CountryFlag(Widget):
                     Triangle(points=(x+w*.5,y+h*.68,x+w*.43,y+h*.46,x+w*.5,y+h*.54,x+w*.57,y+h*.46))
 
 
+class DeviceIcon(Widget):
+    """Compact vector badge for a desktop or phone player."""
+
+    device = StringProperty('mobile')
+    tint = ListProperty([.78, .76, .71, 1])
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(pos=self.redraw, size=self.redraw, device=self.redraw, tint=self.redraw)
+        self.redraw()
+
+    def redraw(self, *_):
+        self.canvas.clear()
+        x, y, w, h = self.x, self.y, self.width, self.height
+        if w <= 0 or h <= 0:
+            return
+        with self.canvas:
+            Color(self.tint[0], self.tint[1], self.tint[2], .14)
+            if self.device == 'desktop':
+                Rectangle(pos=(x+w*.10, y+h*.32), size=(w*.80, h*.56))
+            else:
+                Rectangle(pos=(x+w*.29, y+h*.06), size=(w*.42, h*.88))
+            Color(*self.tint)
+            if self.device == 'desktop':
+                Line(rectangle=(x+w*.10, y+h*.32, w*.80, h*.56), width=max(1, w*.055))
+                Line(points=(x+w*.50,y+h*.31,x+w*.50,y+h*.15,
+                             x+w*.29,y+h*.15,x+w*.71,y+h*.15),
+                     width=max(1, w*.055), cap='round')
+            else:
+                Line(rectangle=(x+w*.29, y+h*.06, w*.42, h*.88), width=max(1, w*.055))
+                Line(points=(x+w*.43,y+h*.14,x+w*.57,y+h*.14), width=max(1, w*.045), cap='round')
+
+
 def _hex_rgb(value):
     value = value.lstrip('#')
     return tuple(int(value[i:i + 2], 16) / 255 for i in (0, 2, 4)) + (1,)

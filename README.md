@@ -36,7 +36,8 @@
 - Pick from four board palettes, two piece styles, light and dark themes, and accent colors.
 - Listen to five selectable soundtracks, with a separate master volume control.
 - Save and resume a singleplayer game, undo a move, or resign.
-- Create or join multiplayer rooms, invite someone by room code, and see player flags.
+- Create or join multiplayer rooms, invite by code, and see each player's flag and device.
+- Follow a live ghost cursor on desktop and a ghost piece drag on mobile.
 - Use the same responsive interface on Android and desktop.
 
 Multiplayer games intentionally do not have Save or Undo. Room creation and moves are relayed by the configured Flask service; see [Multiplayer](#multiplayer).
@@ -50,8 +51,9 @@ Open [GitHub Releases](https://github.com/mardner4ik/Pixel-Chess/releases/latest
 | Android | `pixelchess-*-arm64-v8a-debug.apk` | Download the APK and install it on an ARM64 Android device. |
 | Linux x86_64 | `PixelChess-*-linux-x86_64.tar.gz` | Extract it and run `./PixelChess/PixelChess`, or use `./install.sh` to add it to your applications menu. |
 | Windows | `PixelChess-*-Setup.exe` | The first Windows installer is planned for v1.2.2. Run it and launch Pixel Chess from the Start menu. |
+| Multiplayer server | `pixelchess-multiplayer-server-*.zip` | Upload its files to PythonAnywhere, keep the existing SQLite database, and reload the web app. |
 
-The Linux bundle needs a 64-bit glibc system and system OpenGL/input libraries. On Arch or Artix, install Mesa and `mtdev` if they are not already present. The Windows installer is built on a Windows runner; Linux release builds run on Ubuntu.
+The Linux bundle needs a 64-bit glibc system and system OpenGL/input libraries. On Arch or Artix, install Mesa and `mtdev` if they are not already present. Tagged Windows releases use a Windows runner; the same installer can be assembled locally with Wine as described below.
 
 ## Run from source
 
@@ -68,14 +70,14 @@ From the main menu select **Play → Singleplayer**, then choose the bot strengt
 
 ## Multiplayer
 
-The app connects to a separate Flask relay over HTTPS. The service keeps active room state and validates/relays moves; clients poll it for updates. It is not direct peer-to-peer networking.
+The app connects to a separate Flask relay over HTTPS. The service keeps room state and validates moves. During a game clients use short HTTP polling and throttled presence updates to show the opponent's cursor or dragged piece; it is not direct peer-to-peer networking.
 
 1. Deploy the standalone `multiplayer_server/` service to PythonAnywhere (that directory is intentionally excluded from this app repository).
 2. Set up its persistent SQLite storage and HTTPS endpoint.
 3. In Pixel Chess, open **Multiplayer → Server settings**, enter the service URL, and connect.
 4. Choose a nickname. The app detects the displayed country from the player's public IP and the room lobby lists open public rooms.
 
-Create a public room for the lobby or a private room for code-only invites. The host starts the game after the guest joins. The multiplayer service has its own dependencies and deployment instructions in its separate project directory.
+Create a public room for the lobby or a private room for code-only invites. The host starts the game after the guest joins. Active games show a smoothly interpolated opponent ghost: the pointer on desktop, and only a dragged piece on phones. Room cards and the in-game identity also show country and device icons. Upload the updated standalone server project and reload it to enable these fields and presence updates. Its code and deployment instructions live in the gitignored `multiplayer_server/` directory.
 
 ### Test on a local network
 
@@ -101,6 +103,16 @@ python -m pip install -r requirements.txt pyinstaller
 ```
 
 The generated archive is written to `Release/`. GitHub releases publish the locally built Android APK together with Linux and Windows desktop packages; the desktop packages are built by [the release workflow](.github/workflows/release.yml).
+
+### Windows installer on Linux with Wine
+
+Install Wine, 64-bit Windows Python 3.11, and Inno Setup 6 inside the same Wine prefix, then run:
+
+```bash
+./packaging/windows/build-with-wine.sh
+```
+
+Set `WINEPREFIX` if the tools are installed in a non-default prefix. The installer is written to `Release/`.
 
 ## Project structure
 

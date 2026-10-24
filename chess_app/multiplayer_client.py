@@ -60,15 +60,15 @@ class MultiplayerClient:
     def rooms(self):
         return self.request('GET', '/api/rooms').get('rooms', [])
 
-    def create_room(self, nickname, private, description):
+    def create_room(self, nickname, private, description, device='mobile'):
         return self.request('POST', '/api/rooms', {
             'nickname': nickname, 'private': bool(private), 'description': description,
-            'country': self.country,
+            'country': self.country, 'device': device,
         })
 
-    def join_room(self, code, nickname):
+    def join_room(self, code, nickname, device='mobile'):
         return self.request('POST', f'/api/rooms/{code.strip().upper()}/join',
-                            {'nickname': nickname, 'country': self.country})
+                            {'nickname': nickname, 'country': self.country, 'device': device})
 
     def start_room(self, code, token):
         return self.request('POST', f'/api/rooms/{code}/start', {'token': token})
@@ -76,6 +76,11 @@ class MultiplayerClient:
     def state(self, code, token, after=0):
         return self.request('GET', f'/api/rooms/{code}/state?after={after}',
                             extra_headers={'Authorization': f'Bearer {token}'})
+
+    def update_presence(self, code, token, x, y, drag_square=None, visible=True):
+        return self.request('POST', f'/api/rooms/{code}/presence', {
+            'token': token, 'x': x, 'y': y, 'drag_square': drag_square, 'visible': visible,
+        })
 
     def send_move(self, code, token, uci):
         return self.request('POST', f'/api/rooms/{code}/moves', {'token': token, 'uci': uci})

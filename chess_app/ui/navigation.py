@@ -12,6 +12,7 @@ from kivy.uix.anchorlayout import AnchorLayout
 from kivy.uix.scrollview import ScrollView
 from concurrent.futures import ThreadPoolExecutor
 from kivy.app import App
+from kivy.utils import platform as kivy_platform
 from urllib.parse import urlsplit
 import ipaddress
 import time
@@ -21,9 +22,10 @@ from chess_app.core.engine import ChessEngine
 from chess_app.multiplayer_client import MultiplayerClient
 from chess_app.paths import asset_path
 from chess_app.ui.widgets import (MenuPanel, PixelButton, RoundCard, ToastMessage,
-                                  CountryFlag, RoomEntryButton)
+                                  CountryFlag, RoomEntryButton, DeviceIcon)
 
 MP_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix='pixel-chess-network')
+MP_DEVICE_TYPE = 'desktop' if kivy_platform in {'linux', 'win', 'macosx'} else 'mobile'
 
 
 class GameNavigationMixin:
@@ -303,6 +305,8 @@ class GameNavigationMixin:
                              width=dp(240), height=dp(36), spacing=dp(10),
                              pos_hint={'center_x': .5})
         identity.add_widget(CountryFlag(country=country, size_hint=(None,None), size=(dp(36),dp(23))))
+        identity.add_widget(DeviceIcon(device=MP_DEVICE_TYPE, tint=self.muted_color,
+                                       size_hint=(None,None), size=(dp(20),dp(22))))
         identity.add_widget(self._mp_label(name, dp(36), '16sp'))
         self.main_menu_card.add_widget(identity)
 
@@ -416,7 +420,7 @@ class GameNavigationMixin:
 
     def _create_online_room(self, private, description):
         name, _ = self._profile_identity()
-        self._mp_async(lambda: self._mp_client.create_room(name, private, description),
+        self._mp_async(lambda: self._mp_client.create_room(name, private, description, MP_DEVICE_TYPE),
                        self._room_created)
 
     def _room_created(self, room):
@@ -429,7 +433,7 @@ class GameNavigationMixin:
 
     def _join_room_code(self, code):
         name, _ = self._profile_identity()
-        self._mp_async(lambda: self._mp_client.join_room(code, name), self._joined_room)
+        self._mp_async(lambda: self._mp_client.join_room(code, name, MP_DEVICE_TYPE), self._joined_room)
 
     def _joined_room(self, room):
         self._mp_room = room
@@ -447,6 +451,8 @@ class GameNavigationMixin:
         country = self._mp_room.get('opponent_country', 'ZZ')
         host_row = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(34), spacing=dp(8))
         host_row.add_widget(CountryFlag(country=country, size_hint=(None,None), size=(dp(36),dp(23))))
+        host_row.add_widget(DeviceIcon(device=self._mp_room.get('opponent_device', 'mobile'),
+                                       tint=self.muted_color, size_hint=(None,None), size=(dp(20),dp(22))))
         host_row.add_widget(self._mp_label(host, dp(34)))
         form.add_widget(host_row)
         form.add_widget(self._mp_label('ROOM CODE', dp(32), '16sp'))
@@ -464,8 +470,20 @@ class GameNavigationMixin:
         name, country = self._profile_identity()
         identity = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(30), spacing=dp(8))
         identity.add_widget(CountryFlag(country=country, size_hint=(None,None), size=(dp(36),dp(23))))
+        identity.add_widget(DeviceIcon(device=MP_DEVICE_TYPE, tint=self.muted_color,
+                                       size_hint=(None,None), size=(dp(20),dp(22))))
         identity.add_widget(self._mp_label(name, dp(30)))
         form.add_widget(identity)
+        self._mp_guest_identity = BoxLayout(orientation='horizontal', size_hint_y=None,
+                                            height=dp(30), spacing=dp(8), opacity=0)
+        self._mp_guest_flag = CountryFlag(country='ZZ', size_hint=(None,None), size=(dp(36),dp(23)))
+        self._mp_guest_device = DeviceIcon(device='mobile', tint=self.muted_color,
+                                           size_hint=(None,None), size=(dp(20),dp(22)))
+        self._mp_guest_name = self._mp_label('', dp(30))
+        self._mp_guest_identity.add_widget(self._mp_guest_flag)
+        self._mp_guest_identity.add_widget(self._mp_guest_device)
+        self._mp_guest_identity.add_widget(self._mp_guest_name)
+        form.add_widget(self._mp_guest_identity)
         form.add_widget(self._mp_label('ROOM CODE', dp(32), '16sp'))
         form.add_widget(self._mp_label(self._mp_room['code'], dp(72), '36sp'))
         form.add_widget(self._mp_label(self._mp_room.get('description', '') or 'No description', dp(42), '16sp'))
@@ -495,6 +513,8 @@ class GameNavigationMixin:
         for room in shown:
             row = BoxLayout(orientation='horizontal', size_hint_y=None, height=dp(66), spacing=dp(10))
             row.add_widget(CountryFlag(country=room.get('country', 'ZZ'), size_hint=(None,None), size=(dp(38),dp(25))))
+            row.add_widget(DeviceIcon(device=room.get('device', 'mobile'), tint=self.muted_color,
+                                      size_hint=(None,None), size=(dp(20),dp(24))))
             description = room.get('description') or 'Chess match'
             button = RoomEntryButton(text=f"{room['host']}\n{description}  ·  OPEN",
                                      size_hint=(1, 1), corner_radius=dp(14),
@@ -512,7 +532,14 @@ class GameNavigationMixin:
     def _begin_room_polling(self):
         if self._mp_poll_event:
             self._mp_poll_event.cancel()
-        self._mp_poll_event = Clock.schedule_interval(lambda _dt: self._poll_multiplayer_state(), 1.0)
+        interval = .22 if self._multiplayer_active else .85
+        self._mp_poll_event = Clock.schedule_interval(lambda _dt: self._poll_multiplayer_state(), interval)
+        if getattr(self, '_mp_presence_flush_event', None):
+            self._mp_presence_flush_event.cancel()
+            self._mp_presence_flush_event = None
+        if self._multiplayer_active:
+            self._mp_presence_flush_event = Clock.schedule_interval(
+                lambda _dt: self._flush_mp_presence(), .10)
         self._poll_multiplayer_state()
 
     def _poll_multiplayer_state(self):
@@ -564,6 +591,10 @@ class GameNavigationMixin:
                 if self._mp_poll_event:
                     self._mp_poll_event.cancel()
                     self._mp_poll_event = None
+                if getattr(self, '_mp_presence_flush_event', None):
+                    self._mp_presence_flush_event.cancel()
+                    self._mp_presence_flush_event = None
+                self.board_widget.set_remote_presence(None)
                 self.result_title = 'Opponent disconnected'
                 self.result_detail = 'The room is waiting for another player'
                 self.result_visible = True
@@ -572,11 +603,17 @@ class GameNavigationMixin:
                 if self._mp_poll_event:
                     self._mp_poll_event.cancel()
                     self._mp_poll_event = None
+                if getattr(self, '_mp_presence_flush_event', None):
+                    self._mp_presence_flush_event.cancel()
+                    self._mp_presence_flush_event = None
+                self.board_widget.set_remote_presence(None)
                 self._multiplayer_active = False
                 self._mp_room_finished = True
                 self.result_title = 'Opponent resigned'
                 self.result_detail = 'You win'
                 self.result_visible = True
+        if self._multiplayer_active and not getattr(self, '_mp_room_finished', False):
+            self.board_widget.set_remote_presence(state.get('presence'))
         if self._multiplayer_active and state.get('fen'):
             if self.engine.board.fen() != state['fen']:
                 self.engine.board.set_fen(state['fen'])
@@ -586,6 +623,12 @@ class GameNavigationMixin:
         if state.get('status') == 'ready' and self._mp_room.get('color') == 'white':
             self._mp_room['opponent'] = state.get('opponent') or 'Opponent'
             self._mp_room['opponent_country'] = state.get('opponent_country') or 'ZZ'
+            self._mp_room['opponent_device'] = state.get('opponent_device') or 'mobile'
+            if getattr(self, '_mp_guest_identity', None) is not None:
+                self._mp_guest_flag.country = self._mp_room['opponent_country']
+                self._mp_guest_device.device = self._mp_room['opponent_device']
+                self._mp_guest_name.text = self._mp_room['opponent']
+                self._mp_guest_identity.opacity = 1
             if getattr(self, '_mp_start_button', None) is not None:
                 self._mp_wait_status.text = f"{self._mp_room['opponent']} joined. Start when you're ready."
                 self._mp_start_button.text = 'Start game'
@@ -596,7 +639,8 @@ class GameNavigationMixin:
         if state.get('status') == 'playing' and not self._multiplayer_active:
             color = chess.WHITE if self._mp_room.get('color') == 'white' else chess.BLACK
             self._start_multiplayer_game(color, state.get('opponent') or 'Opponent',
-                                         state.get('opponent_country') or 'ZZ')
+                                         state.get('opponent_country') or 'ZZ',
+                                         state.get('opponent_device') or 'mobile')
 
     def _start_room_on_server(self):
         room = getattr(self, '_mp_room', None)
@@ -608,7 +652,8 @@ class GameNavigationMixin:
         self._mp_async(lambda: self._mp_client.start_room(room['code'], room['token']),
                        lambda result: self._start_multiplayer_game(
                            chess.WHITE, result.get('opponent', room.get('opponent', 'Opponent')),
-                           result.get('opponent_country', room.get('opponent_country', 'ZZ'))),
+                           result.get('opponent_country', room.get('opponent_country', 'ZZ')),
+                           result.get('opponent_device', room.get('opponent_device', 'mobile'))),
                        lambda _dt: self._restore_start_button())
 
     def _restore_start_button(self):
@@ -617,11 +662,16 @@ class GameNavigationMixin:
             button.disabled = False
             button.text = 'Start game'
 
-    def _start_multiplayer_game(self, color, opponent, country):
+    def _start_multiplayer_game(self, color, opponent, country, device='mobile'):
         self._multiplayer_active = True
         self._mp_move_pending = False
+        self._mp_presence_outgoing = None
+        self._mp_presence_last_queued = None
+        self._mp_presence_latest = None
+        self._mp_presence_last_sent_at = 0.0
         self._opponent_identity.opacity = 1
         self._opponent_flag.country = country
+        self._opponent_device.device = device
         self._opponent_name.text = opponent
         self._position_opponent_identity()
         self._cancel_bot_thinking()
@@ -647,6 +697,43 @@ class GameNavigationMixin:
         self.remaining_time = {chess.WHITE: 0.0, chess.BLACK: 0.0}
         self.refresh()
         self._begin_room_polling()
+
+    def _queue_mp_presence(self, x, y, drag_square=None, visible=True):
+        if not self._multiplayer_active or not getattr(self, '_mp_room', None):
+            return
+        payload = {'x': round(float(x), 3), 'y': round(float(y), 3),
+                   'drag_square': int(drag_square) if drag_square is not None else None,
+                   'visible': bool(visible)}
+        current = (getattr(self, '_mp_presence_outgoing', None)
+                   or getattr(self, '_mp_presence_last_queued', None))
+        if current and current['visible'] == payload['visible'] and current['drag_square'] == payload['drag_square']:
+            if not payload['visible'] or (abs(current['x']-payload['x']) < .012
+                                          and abs(current['y']-payload['y']) < .012):
+                return
+        self._mp_presence_outgoing = payload
+        self._mp_presence_last_queued = payload
+        self._mp_presence_latest = payload
+
+    def _flush_mp_presence(self):
+        room = getattr(self, '_mp_room', None)
+        payload = getattr(self, '_mp_presence_outgoing', None)
+        if not room or not self._multiplayer_active or getattr(self, '_mp_presence_inflight', False):
+            return
+        if payload is None:
+            latest = getattr(self, '_mp_presence_latest', None)
+            if (latest and latest['visible']
+                    and time.monotonic() - getattr(self, '_mp_presence_last_sent_at', 0) >= .9):
+                payload = latest
+            else:
+                return
+        self._mp_presence_outgoing = None
+        self._mp_presence_inflight = True
+        def done(*_):
+            self._mp_presence_inflight = False
+            self._mp_presence_last_sent_at = time.monotonic()
+        self._mp_async(lambda: self._mp_client.update_presence(
+            room['code'], room['token'], payload['x'], payload['y'],
+            payload['drag_square'], payload['visible']), done, done)
 
     def _send_multiplayer_move(self, move):
         room = self._mp_room
@@ -697,6 +784,7 @@ class GameNavigationMixin:
                 self.board_widget.selected = []
                 self.board_widget.targets = []
                 self.board_widget.disabled = False
+                self.board_widget.set_remote_presence(state.get('presence'))
                 self.refresh()
                 self._show_toast('Move not accepted; board synchronized')
             except (KeyError, ValueError):
@@ -709,6 +797,9 @@ class GameNavigationMixin:
         if self._mp_poll_event:
             self._mp_poll_event.cancel()
             self._mp_poll_event = None
+        if getattr(self, '_mp_presence_flush_event', None):
+            self._mp_presence_flush_event.cancel()
+            self._mp_presence_flush_event = None
         self._multiplayer_active = False
         self._mp_move_pending = False
         self.board_widget.disabled = False
@@ -726,6 +817,9 @@ class GameNavigationMixin:
         if self._mp_poll_event:
             self._mp_poll_event.cancel()
             self._mp_poll_event = None
+        if getattr(self, '_mp_presence_flush_event', None):
+            self._mp_presence_flush_event.cancel()
+            self._mp_presence_flush_event = None
         self._multiplayer_active = False
         self._mp_move_pending = False
         self.board_widget.disabled = False

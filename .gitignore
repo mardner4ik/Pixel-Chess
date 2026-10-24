@@ -9,6 +9,7 @@ venv/
 .buildozer/
 build/
 dist/
+PixelChess.spec
 Release/
 bin/
 *.apk

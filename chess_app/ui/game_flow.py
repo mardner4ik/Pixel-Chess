@@ -25,6 +25,12 @@ class GameFlowMixin:
         self._game_started = False
         if getattr(self, '_multiplayer_active', False):
             self._mp_room_finished = True
+            presence_event = getattr(self, '_mp_presence_flush_event', None)
+            if presence_event is not None:
+                presence_event.cancel()
+                self._mp_presence_flush_event = None
+            if hasattr(self, 'board_widget'):
+                self.board_widget.set_remote_presence(None)
         if getattr(self, '_mp_poll_event', None) is not None:
             self._mp_poll_event.cancel()
             self._mp_poll_event = None
