@@ -63,7 +63,7 @@ jobs:
           chmod +x dist/install.sh
           mkdir -p Release
           version="${GITHUB_REF_NAME#v}"
-          tar -C dist -czf "Release/PixelChess-${version}-linux-x86_64.tar.gz" PixelChess README.txt install.sh
+          tar -czf "Release/PixelChess-${version}-linux-x86_64.tar.gz" -C dist PixelChess README.txt install.sh
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x86_64

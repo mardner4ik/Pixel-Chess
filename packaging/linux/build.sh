@@ -13,6 +13,6 @@ cp packaging/linux/README.txt dist/README.txt
 cp packaging/linux/install.sh dist/install.sh
 chmod +x dist/install.sh
 mkdir -p Release
-tar -C dist -czf "Release/PixelChess-${version}-linux-x86_64.tar.gz" \
-    PixelChess README.txt install.sh
+tar -czf "Release/PixelChess-${version}-linux-x86_64.tar.gz" \
+    -C dist PixelChess README.txt install.sh
 printf 'Created Release/PixelChess-%s-linux-x86_64.tar.gz\n' "$version"
