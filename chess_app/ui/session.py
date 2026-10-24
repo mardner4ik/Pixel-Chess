@@ -4,11 +4,12 @@ import json
 import time
 
 import chess
+from kivy.app import App
 from kivy.clock import Clock
 
 from chess_app.core.engine import ChessEngine
 from chess_app.ui.board import BOARD_PALETTES
-from chess_app.ui.soundtracks import SOUNDTRACKS, SOUNDTRACKS_BY_ID
+from chess_app.ui.soundtracks import SOUNDTRACKS_BY_ID
 
 
 class GameSessionMixin:
@@ -101,10 +102,10 @@ class GameSessionMixin:
         if self.engine.board.turn != self.player_color:
             Clock.schedule_once(self._start_bot, .25)
 
-    def _cycle_board_palette(self, button):
-        names = tuple(BOARD_PALETTES)
-        self.board_palette = names[(names.index(self.board_palette) + 1) % len(names)]
-        button.text = f"Board colors  ·  {self.board_palette.title()}  ·  tap to change"
+    def _set_board_palette(self, name):
+        if name not in BOARD_PALETTES:
+            return
+        self.board_palette = name
         self.board_widget.invalidate_board()
         app = App.get_running_app()
         if app is not None:
@@ -112,9 +113,10 @@ class GameSessionMixin:
             app.config.write()
         self._save_game()
 
-    def _cycle_piece_style(self, button):
-        self.piece_style = "vector" if self.piece_style == "pixel" else "pixel"
-        button.text = f"Piece style  ·  {'Vector' if self.piece_style == 'vector' else 'Pixel'}  ·  tap to change"
+    def _set_piece_style(self, style):
+        if style not in {"pixel", "vector"}:
+            return
+        self.piece_style = style
         self.board_widget.redraw()
         app = App.get_running_app()
         if app is not None:
@@ -122,12 +124,10 @@ class GameSessionMixin:
             app.config.write()
         self._save_game()
 
-    def _cycle_soundtrack(self, button):
-        track_ids = [track["id"] for track in SOUNDTRACKS]
-        current = self.soundtrack_id if self.soundtrack_id in track_ids else track_ids[0]
-        self.soundtrack_id = track_ids[(track_ids.index(current) + 1) % len(track_ids)]
-        track = SOUNDTRACKS_BY_ID[self.soundtrack_id]
-        button.text = f"Music  ·  {track['title']}  ·  tap to change"
+    def _set_soundtrack(self, track_id):
+        if track_id not in SOUNDTRACKS_BY_ID:
+            return
+        self.soundtrack_id = track_id
         app = App.get_running_app()
         if app is not None:
             app.config.set("game", "soundtrack", self.soundtrack_id)

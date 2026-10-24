@@ -10,12 +10,12 @@ from kivy.uix.widget import Widget
 from kivy.uix.label import Label
 from kivy.uix.image import Image
 from kivy.uix.modalview import ModalView
+from kivy.uix.scrollview import ScrollView
 import webbrowser
 
-from chess_app.ui.board import ACCENT_PALETTES
-from chess_app.ui.system_theme import get_system_accent_color
+from chess_app.ui.board import ACCENT_PALETTES, BOARD_PALETTES
 from chess_app.ui.soundtracks import SOUNDTRACKS, SOUNDTRACKS_BY_ID
-from chess_app.ui.widgets import (PixelButton, AccentChoiceButton, RoundCard,
+from chess_app.ui.widgets import (PixelButton, RoundCard,
                                   IconActionButton, SettingsIcon)
 
 
@@ -118,9 +118,9 @@ class GameDialogsMixin:
         surface = (.29, .29, .28, 1) if self.dark_mode else (.90, .89, .86, 1)
         volume_row = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(10))
         volume_icon = SettingsIcon(icon="volume", tint=self.accent_color,
-                                   size_hint=(None, None), size=(dp(36), dp(36)))
+                                   size_hint=(None, None), size=(dp(28), dp(28)))
         volume_text = BoxLayout(orientation="vertical", spacing=-dp(2),
-                                size_hint_x=None, width=dp(112))
+                                size_hint_x=None, width=dp(105))
         volume_title = Label(text="Master volume", color=self.text_color,
                              font_size="14sp", bold=True, halign="left", valign="bottom")
         volume_label = Label(text=f"{round(self.master_volume * 100)}%",
@@ -144,7 +144,9 @@ class GameDialogsMixin:
             size_hint_y=None, height=dp(52), corner_radius=dp(14),
             fill_color=surface, text_color=self.text_color,
             muted_color=self.muted_color, icon_color=self.accent_color)
-        soundtrack_button.bind(on_release=lambda *_: self._cycle_soundtrack(soundtrack_button))
+        soundtrack_button.bind(on_release=lambda *_: self._show_setting_choices(
+            "Background music", [(track["id"], track["title"]) for track in SOUNDTRACKS],
+            self.soundtrack_id, lambda value: self._choose_soundtrack(value, soundtrack_button)))
 
         appearance_row = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(10))
         board_button = IconActionButton(
@@ -156,27 +158,24 @@ class GameDialogsMixin:
             detail="Vector" if self.piece_style == "vector" else "Pixel",
             corner_radius=dp(14), fill_color=surface, text_color=self.text_color,
             muted_color=self.muted_color, icon_color=self.accent_color)
-        board_button.bind(on_release=lambda *_: self._cycle_board_palette(board_button))
-        pieces_button.bind(on_release=lambda *_: self._cycle_piece_style(pieces_button))
+        board_button.bind(on_release=lambda *_: self._show_setting_choices(
+            "Board style", [(name, name.title()) for name in BOARD_PALETTES], self.board_palette,
+            lambda value: self._choose_board_palette(value, board_button)))
+        pieces_button.bind(on_release=lambda *_: self._show_setting_choices(
+            "Piece style", [("pixel", "Pixel"), ("vector", "Vector")], self.piece_style,
+            lambda value: self._choose_piece_style(value, pieces_button)))
         appearance_row.add_widget(board_button)
         appearance_row.add_widget(pieces_button)
 
-        palette_row = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(6))
-        self._settings_accent_buttons = []
-        palette_options = [("system", "Auto", None)] + [
-            (mode, mode.title(), color) for mode, color in ACCENT_PALETTES.items()]
-        for mode, caption, color in palette_options:
-            if color is None:
-                color = get_system_accent_color(self.dark_mode) or (
-                    (.83, .65, .55, 1) if self.dark_mode else (.65, .40, .31, 1))
-            choice = AccentChoiceButton(text=caption, size_hint=(1, 1),
-                                        corner_radius=dp(10), font_size="12sp",
-                                        fill_color=color, text_color=self._accent_text_color(color),
-                                        selected=mode == self.accent_mode)
-            choice._accent_mode = mode
-            choice.bind(on_release=lambda *_args, selected=mode: self._set_accent_mode(selected))
-            self._settings_accent_buttons.append(choice)
-            palette_row.add_widget(choice)
+        accent_name = "Auto" if self.accent_mode == "system" else self.accent_mode.title()
+        accent_button = IconActionButton(
+            icon="palette", title="Accent color", detail=accent_name,
+            size_hint_y=None, height=dp(48), corner_radius=dp(14),
+            fill_color=surface, text_color=self.text_color,
+            muted_color=self.muted_color, icon_color=self.accent_color)
+        accent_button.bind(on_release=lambda *_: self._show_setting_choices(
+            "Accent color", [("system", "Auto")] + [(mode, mode.title()) for mode in ACCENT_PALETTES],
+            self.accent_mode, lambda value: self._choose_accent(value, accent_button)))
 
         close = PixelButton(text="Done", size_hint_y=None, height=dp(44),
                             font_size="15sp", corner_radius=dp(13),
@@ -184,13 +183,62 @@ class GameDialogsMixin:
                             text_color=self._accent_text_color(self.accent_color))
         close.bind(on_release=view.dismiss)
         for widget in (heading, section("SOUND"), volume_row, soundtrack_button,
-                       section("APPEARANCE"), appearance_row, section("ACCENT COLOR"),
-                       palette_row, close):
+                       section("APPEARANCE"), appearance_row, accent_button, close):
             card.add_widget(widget)
         view.add_widget(card)
         self._open_dialog_near_top(view, card)
         card.opacity = 0
         Animation(opacity=1, duration=.20, t="out_quad").start(card)
+
+    def _show_setting_choices(self, title, choices, selected, on_select):
+        """Show explicit options in a compact contextual picker."""
+        row_height = dp(42)
+        view_height = min(dp(420), dp(78) + len(choices) * (row_height + dp(5)))
+        view = ModalView(size_hint=(.84, None), height=view_height, auto_dismiss=True,
+                         background="", background_color=(0, 0, 0, 0),
+                         overlay_color=(0, 0, 0, .40))
+        card = RoundCard(orientation="vertical", padding=(dp(16), dp(14)), spacing=dp(8),
+                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
+                         corner_radius=dp(24))
+        heading = Label(text=title, size_hint_y=None, height=dp(34), bold=True,
+                        font_size="19sp", color=self.text_color, halign="left")
+        heading.bind(size=lambda widget, size: setattr(widget, "text_size", size))
+        rows = BoxLayout(orientation="vertical", size_hint_y=None,
+                         height=row_height * len(choices) + dp(5) * max(0, len(choices) - 1),
+                         spacing=dp(5))
+        for value, caption in choices:
+            mark = "✓  " if value == selected else ""
+            option = PixelButton(text=mark + caption, size_hint_y=None, height=row_height,
+                                 corner_radius=dp(12), font_size="14sp",
+                                 fill_color=self.accent_color if value == selected else
+                                 ((.29, .29, .28, 1) if self.dark_mode else (.90, .89, .86, 1)),
+                                 text_color=self._accent_text_color(self.accent_color) if value == selected
+                                 else self.text_color)
+            option.bind(on_release=lambda *_args, choice=value: (on_select(choice), view.dismiss()))
+            rows.add_widget(option)
+        scroll = ScrollView(do_scroll_x=False, bar_width=dp(3))
+        scroll.add_widget(rows)
+        card.add_widget(heading)
+        card.add_widget(scroll)
+        view.add_widget(card)
+        self._open_dialog_near_top(view, card)
+
+    def _choose_soundtrack(self, value, button):
+        self._set_soundtrack(value)
+        button.detail_label.text = SOUNDTRACKS_BY_ID[value]["title"]
+
+    def _choose_board_palette(self, value, button):
+        self._set_board_palette(value)
+        button.detail_label.text = value.title()
+
+    def _choose_piece_style(self, value, button):
+        self._set_piece_style(value)
+        button.detail_label.text = value.title()
+
+    def _choose_accent(self, value, button):
+        self._set_accent_mode(value)
+        button.detail_label.text = "Auto" if value == "system" else value.title()
+        button.icon_color = self.accent_color
 
     def _update_volume_controls(self, value, label):
         label.text = f'{round(value * 100)}%'

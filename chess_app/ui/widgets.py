@@ -200,9 +200,9 @@ class IconActionButton(PixelButton):
         from kivy.uix.label import Label
 
         self.content = BoxLayout(orientation="horizontal", spacing=dp(10),
-                                 padding=(dp(12), 0, dp(8), 0))
+                                 padding=(dp(10), 0, dp(8), 0))
         self.icon_widget = SettingsIcon(icon=icon, tint=self.icon_color,
-                                        size_hint=(None, None), size=(dp(34), dp(34)))
+                                        size_hint=(None, None), size=(dp(26), dp(26)))
         self.title_label = Label(text=title, color=self.text_color,
                                  font_size="14sp", bold=True, halign="left",
                                  valign="bottom", shorten=True, shorten_from="right")
