@@ -11,6 +11,7 @@ from kivy.clock import Clock
 
 from chess_app.core.engine import ChessEngine
 from chess_app.ui.board import BOARD_PALETTES
+from chess_app.ui.soundtracks import SOUNDTRACKS, SOUNDTRACKS_BY_ID
 
 
 class GameSessionMixin:
@@ -20,7 +21,7 @@ class GameSessionMixin:
         payload = {"fen": self.engine.board.fen(), "moves": [move.uci() for move in self.engine.board.move_stack],
                    "player_color": bool(self.player_color), "difficulty": self.difficulty,
                    "time_control": self.time_control, "board_palette": self.board_palette,
-                   "piece_style": self.piece_style,
+                   "piece_style": self.piece_style, "soundtrack_id": self.soundtrack_id,
                    "remaining": {str(k): v for k, v in self.remaining_time.items()},
                    "saved_at": time.time()}
         try:
@@ -69,6 +70,8 @@ class GameSessionMixin:
         self.time_control = int(data.get("time_control", 0))
         self.board_palette = data.get("board_palette", "sage")
         self.piece_style = data.get("piece_style", "pixel")
+        track_id = data.get("soundtrack_id", "friday_morning")
+        self.soundtrack_id = track_id if track_id in SOUNDTRACKS_BY_ID else "friday_morning"
         self.remaining_time = {chess.WHITE: float(data.get("remaining", {}).get("True", 0)),
                                chess.BLACK: float(data.get("remaining", {}).get("False", 0))}
         self.started_at = time.monotonic()
@@ -141,6 +144,21 @@ class GameSessionMixin:
             app.config.write()
         self._save_game()
 
+    def _cycle_soundtrack(self, button):
+        track_ids = [track["id"] for track in SOUNDTRACKS]
+        current = self.soundtrack_id if self.soundtrack_id in track_ids else track_ids[0]
+        self.soundtrack_id = track_ids[(track_ids.index(current) + 1) % len(track_ids)]
+        track = SOUNDTRACKS_BY_ID[self.soundtrack_id]
+        button.text = f"Music  ·  {track['title']}  ·  tap to change"
+        app = App.get_running_app()
+        if app is not None:
+            app.config.set("game", "soundtrack", self.soundtrack_id)
+            app.config.write()
+        if self._background_music is not None:
+            self._background_music.stop()
+        self._start_audio()
+        self._save_game()
+
     def _clock_text(self, color):
         seconds = max(0, int(self.remaining_time.get(color, 0)))
         return f"{seconds // 60:02}:{seconds % 60:02}"
@@ -172,13 +190,26 @@ class GameSessionMixin:
             self.remaining_time[color] = max(0, self.remaining_time[color] - (now - self._last_clock_tick))
             self._last_clock_tick = now
 
-    def undo_move(self):
+    def can_undo_move(self):
         if not self._game_started or not self.engine.board.move_stack:
+            return False
+        board = self.engine.board
+        return board.turn != self.player_color or len(board.move_stack) >= 2
+
+    def undo_move(self):
+        if not self.can_undo_move():
             return
         board = self.engine.board
-        bot_thinking = board.turn != self.player_color
-        board.pop()
-        if not bot_thinking and board.move_stack:
+        if board.turn != self.player_color:
+            # The bot is to move, so the last move is the player's move.
+            board.pop()
+        else:
+            # Only take back a bot reply together with the player's move that
+            # preceded it. In particular, keep the bot's opening move intact
+            # until the player has actually made a move.
+            if len(board.move_stack) < 2:
+                return
+            board.pop()
             board.pop()
         self.remaining_time[self.player_color] = max(1, self.remaining_time.get(self.player_color, 0))
         self.selection = None

@@ -28,7 +28,8 @@ class PixelChessApp(App):
         config.setdefaults("audio", {"master_volume": "0.60"})
         config.setdefaults("appearance", {"accent_mode": "system"})
         config.setdefaults("game", {"difficulty": "normal", "time_control": "0",
-                                     "board_palette": "sage", "piece_style": "pixel"})
+                                     "board_palette": "sage", "piece_style": "pixel",
+                                     "soundtrack": "friday_morning"})
 
     def build(self):
         font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "GoogleSansFlex.ttf")

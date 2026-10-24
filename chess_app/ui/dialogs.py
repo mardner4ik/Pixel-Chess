@@ -14,6 +14,7 @@ import webbrowser
 
 from chess_app.ui.board import ACCENT_PALETTES
 from chess_app.ui.system_theme import get_system_accent_color
+from chess_app.ui.soundtracks import SOUNDTRACKS, SOUNDTRACKS_BY_ID
 from chess_app.ui.widgets import PixelButton, AccentChoiceButton, RoundCard
 
 
@@ -86,21 +87,21 @@ class GameDialogsMixin:
     def _show_settings(self):
         from kivy.uix.slider import Slider
 
-        view = ModalView(size_hint=(.90, None), height=dp(510), auto_dismiss=True,
+        view = ModalView(size_hint=(.92, None), height=dp(570), auto_dismiss=True,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .38))
-        card = RoundCard(orientation='vertical', padding=(dp(20), dp(14), dp(20), dp(8)), spacing=dp(12),
+        card = RoundCard(orientation='vertical', padding=(dp(24), dp(18), dp(24), dp(14)), spacing=dp(10),
                          fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
                          corner_radius=dp(30))
         heading = Label(text='Settings', size_hint_y=None, height=dp(40), bold=True,
-                        font_size='22sp', color=self.text_color, halign='left')
+                        font_size='24sp', color=self.text_color, halign='left')
         heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
         volume_label = Label(text=f'Master volume  {round(self.master_volume * 100)}%',
                              size_hint_y=None, height=dp(28), color=self.text_color,
-                             font_size='15sp', halign='left')
+                             font_size='16sp', halign='left')
         volume_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
         slider = Slider(min=0, max=1, value=self.master_volume, size_hint_y=None,
-                        height=dp(34), cursor_size=(dp(24), dp(24)))
+                        height=dp(38), cursor_size=(dp(24), dp(24)))
         slider.value_track = True
         slider.value_track_color = self.accent_color
         self._settings_slider = slider
@@ -110,30 +111,37 @@ class GameDialogsMixin:
                                  size_hint_y=None, height=dp(26), color=self.text_color,
                                  font_size='13sp', halign='left')
         difficulty_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        difficulty_button = PixelButton(text=difficulty_label.text, size_hint_y=None, height=dp(38),
-                                        font_size='12sp')
+        difficulty_button = PixelButton(text=difficulty_label.text, size_hint_y=None, height=dp(42),
+                                        font_size='14sp', corner_radius=dp(13))
         difficulty_button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
         difficulty_button.text_color = self.text_color
         difficulty_button.bind(on_release=lambda *_: self._cycle_difficulty(difficulty_button))
         clock_button = PixelButton(text=f"Time control  ·  {'Off' if not self.time_control else str(self.time_control) + ' min'}  ·  tap to change",
-                                   size_hint_y=None, height=dp(38), font_size='12sp')
+                                   size_hint_y=None, height=dp(42), font_size='14sp', corner_radius=dp(13))
         clock_button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
         clock_button.text_color = self.text_color
         clock_button.bind(on_release=lambda *_: self._cycle_time_control(clock_button))
         board_button = PixelButton(text=f"Board colors  ·  {self.board_palette.title()}  ·  tap to change",
-                                   size_hint_y=None, height=dp(34), font_size='12sp')
+                                   size_hint_y=None, height=dp(42), font_size='14sp', corner_radius=dp(13))
         board_button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
         board_button.text_color = self.text_color
         board_button.bind(on_release=lambda *_: self._cycle_board_palette(board_button))
         pieces_button = PixelButton(text=f"Piece style  ·  {'Vector' if self.piece_style == 'vector' else 'Pixel'}  ·  tap to change",
-                                    size_hint_y=None, height=dp(34), font_size='12sp')
+                                    size_hint_y=None, height=dp(42), font_size='14sp', corner_radius=dp(13))
         pieces_button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
         pieces_button.text_color = self.text_color
         pieces_button.bind(on_release=lambda *_: self._cycle_piece_style(pieces_button))
-        palette_label = Label(text='Accent color', size_hint_y=None, height=dp(22),
-                              color=self.text_color, font_size='14sp', halign='left')
+        current_track = SOUNDTRACKS_BY_ID.get(self.soundtrack_id, SOUNDTRACKS[0])
+        soundtrack_button = PixelButton(
+            text=f"Music  ·  {current_track['title']}  ·  tap to change",
+            size_hint_y=None, height=dp(42), font_size='14sp', corner_radius=dp(13))
+        soundtrack_button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
+        soundtrack_button.text_color = self.text_color
+        soundtrack_button.bind(on_release=lambda *_: self._cycle_soundtrack(soundtrack_button))
+        palette_label = Label(text='Accent color', size_hint_y=None, height=dp(24),
+                              color=self.text_color, font_size='16sp', halign='left')
         palette_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        palette_row = BoxLayout(size_hint_y=None, height=dp(36), spacing=dp(4))
+        palette_row = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(5))
         self._settings_accent_buttons = []
         palette_options = [('system', 'Auto', None)] + [
             (mode, mode.title(), color) for mode, color in ACCENT_PALETTES.items()]
@@ -142,7 +150,7 @@ class GameDialogsMixin:
                 color if color is not None else get_system_accent_color(self.dark_mode) or
                 ((.83, .65, .55, 1) if self.dark_mode else (.65, .40, .31, 1)))
             choice = AccentChoiceButton(text=caption, size_hint=(1, 1),
-                                        corner_radius=dp(10), font_size='10sp',
+                                        corner_radius=dp(11), font_size='12sp',
                                         fill_color=color,
                                         text_color=self._accent_text_color(color),
                                         selected=mode == self.accent_mode)
@@ -150,7 +158,7 @@ class GameDialogsMixin:
             choice.bind(on_release=lambda *_args, selected=mode: self._set_accent_mode(selected))
             self._settings_accent_buttons.append(choice)
             palette_row.add_widget(choice)
-        close = PixelButton(text='Done', size_hint_y=None, height=dp(46))
+        close = PixelButton(text='Done', size_hint_y=None, height=dp(50), font_size='16sp', corner_radius=dp(14))
         close.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
         close.text_color = self.text_color
         close.ripple_color = (*self.accent_color[:3], .34)
@@ -160,6 +168,7 @@ class GameDialogsMixin:
         card.add_widget(slider)
         card.add_widget(difficulty_button)
         card.add_widget(clock_button)
+        card.add_widget(soundtrack_button)
         card.add_widget(board_button)
         card.add_widget(pieces_button)
         card.add_widget(palette_label)
@@ -178,11 +187,11 @@ class GameDialogsMixin:
         self.show_info('About Pixel Chess',
                        'A minimalist chess game for focused play. Choose either side to play against the local opponent.\n\n'
                        'HOW TO PLAY\nTap a piece, then tap one of its highlighted legal moves.\n\n'
-                       'MUSIC\nFriday Morning — Kevin MacLeod (CC BY 4.0).\n\n'
+                       'MUSIC\nFriday Morning, Easy Lemon, Immersed, Morning, and Evening by Kevin MacLeod (incompetech.com), licensed under CC BY 4.0. Audio was converted from MP3 to mono WAV.\nhttps://creativecommons.org/licenses/by/4.0/\n\n'
                        'LICENSE\nGNU General Public License v3 (GPL-3.0).')
 
     def show_info(self, title, message):
-        view = ModalView(size_hint=(.90, None), height=dp(390), auto_dismiss=True,
+        view = ModalView(size_hint=(.90, None), height=dp(480), auto_dismiss=True,
                          background='', background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .38))
         card = RoundCard(orientation='vertical', padding=(dp(22), dp(14), dp(22), dp(8)), spacing=dp(12),

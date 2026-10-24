@@ -15,7 +15,8 @@ A minimalist, mobile-first chess game built with [Kivy](https://kivy.org/). Choo
 - Android 12+ wallpaper-derived system accent colors, plus selectable palettes and a fallback for older Android and desktop
 - Custom white and black chess piece artwork shipped as PNG assets with SVG source files
 - Choose to play as White or Black at the start of each game
-- Kevin MacLeod's 3:30 piano track, a move sound effect, and a saved master volume setting
+- Five selectable Kevin MacLeod soundtracks and a move sound effect, with a saved master volume setting
+- Choose the opponent difficulty before choosing your side
 - Light and dark appearance follows the system theme
 
 ## Run on desktop
@@ -27,7 +28,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-From the main menu, choose **Play → Singleplayer**, then select White or Black. Tap a piece to show its legal moves, then tap a destination, or drag a piece to a square. Settings lets you choose the system accent or a built-in palette. The in-game menu provides Settings, About, Undo, PGN export, and **Resign**. Settings includes opponent strength, optional clock, board and piece styles, accent colors, and volume. An unfinished game can be resumed from the main menu. PGN exports are written to the app's user data folder. After a game ends, choose **Main menu** or **Restart**. Multiplayer is visible but disabled while it is being developed.
+From the main menu, choose **Play → Singleplayer**, select the opponent strength, then choose White or Black. Tap a piece to show its legal moves, then tap a destination, or drag a piece to a square. The in-game menu provides Settings, About, Undo, PGN export, and **Resign**. Settings includes opponent strength, optional clock, soundtrack, board and piece styles, accent colors, and volume. An unfinished game can be resumed from the main menu. PGN exports are written to the app's user data folder. After a game ends, choose **Main menu** or **Restart**. Multiplayer is visible but disabled while it is being developed.
 
 ## Build for Android
 
@@ -51,7 +52,8 @@ chess_app/ui/session.py      clocks, save/resume, undo, and PGN export
 chess_app/ui/widgets.py      shared buttons and cards
 chess_app/ui/theme.kv        Kivy interface styles
 chess_app/ui/system_theme.py system light/dark theme detection
-assets/ambient.wav           licensed 3:30 piano soundtrack
+assets/ambient.wav           Friday Morning piano soundtrack
+assets/music/                four additional selectable soundtracks
 assets/move.wav              soft move sound effect
 assets/fonts/                Google Sans Flex UI font and SIL Open Font License
 assets/pieces/               pixel and vector piece artwork
@@ -64,10 +66,10 @@ Pixel Chess is distributed under the GNU General Public License v3.0 only (GPL-3
 ## Authors and credits
 
 - **[@mardner4ik](https://github.com/mardner4ik)** — project author and maintainer.
-- **Kevin MacLeod** — composer of “Friday Morning,” the piano track used in the game. It is provided under CC BY 4.0 with attribution below.
+- **Kevin MacLeod** — composer of all five selectable soundtracks, provided under CC BY 4.0 with attribution below.
 - **OpenAI Codex** — AI development assistance; original chess-piece artwork and move sound were created for the project at the maintainer's direction.
 - **GitHub** — the GitHub mark in About is GitHub's brand asset.
 - **Google Fonts contributors** — Google Sans Flex, distributed under SIL Open Font License 1.1; see [`assets/fonts/OFL.txt`](assets/fonts/OFL.txt).
 - The app uses [Kivy](https://kivy.org/) for its interface and [python-chess](https://python-chess.readthedocs.io/) for chess rules.
 
-Music attribution: “Friday Morning” Kevin MacLeod ([incompetech.com](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1100224)), licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/). The source MP3 was converted to mono 22.05 kHz WAV for app playback; the composition is unchanged.
+Music attribution: “Friday Morning” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1100224)), “Easy Lemon” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1200076)), “Immersed” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN1600010)), “Morning” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN2300003)), and “Evening” ([source](https://incompetech.com/music/royalty-free/index.html?Search=Search&isrc=USUAN2300002)) by Kevin MacLeod ([incompetech.com](https://incompetech.com/)), licensed under [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/). The source MP3s were converted to mono 22.05 kHz WAV for app playback; the compositions are unchanged.

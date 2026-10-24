@@ -22,6 +22,7 @@ from chess_app.ui.widgets import PixelButton, MenuIconButton, AccentChoiceButton
 from chess_app.ui.board import ChessBoard, ACCENT_PALETTES, BOARD_PALETTES, BOT_POOL
 from chess_app.ui.dialogs import GameDialogsMixin
 from chess_app.ui.session import GameSessionMixin
+from chess_app.ui.soundtracks import SOUNDTRACKS, SOUNDTRACKS_BY_ID
 
 class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
     menu_open = BooleanProperty(False)
@@ -62,6 +63,8 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         self.time_control = app.config.getint("game", "time_control") if app is not None and app.config.has_option("game", "time_control") else 0
         self.board_palette = app.config.getdefault("game", "board_palette", "sage") if app is not None else "sage"
         self.piece_style = app.config.getdefault("game", "piece_style", "pixel") if app is not None else "pixel"
+        saved_track = app.config.getdefault("game", "soundtrack", "friday_morning") if app is not None else "friday_morning"
+        self.soundtrack_id = saved_track if saved_track in SOUNDTRACKS_BY_ID else "friday_morning"
         self.remaining_time = {chess.WHITE: 0.0, chess.BLACK: 0.0}
         self._clock_event = None
         self._last_clock_tick = time.monotonic()
@@ -181,7 +184,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         self.ids.menu_button.disabled = False
         self.ids.status_label.opacity = 1
         self._side_picker = None
-        Clock.schedule_once(self._show_side_picker, .12)
+        Clock.schedule_once(self._show_difficulty_picker, .12)
 
     def _hide_main_menu(self):
         if not self._in_main_menu:
@@ -206,7 +209,12 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             from kivy.resources import resource_find
 
             assets_dir = Path(__file__).resolve().parents[2] / "assets"
-            for filename, target in (("ambient.wav", "music"), ("move.wav", "move")):
+            if self._background_music is not None:
+                self._background_music.stop()
+            if self._move_sound is not None:
+                self._move_sound.stop()
+            track = SOUNDTRACKS_BY_ID.get(self.soundtrack_id, SOUNDTRACKS[0])
+            for filename, target in ((track["file"], "music"), ("move.wav", "move")):
                 bundled_source = assets_dir / filename
                 source = str(bundled_source) if bundled_source.is_file() else resource_find(
                     f"assets/{filename}")
@@ -366,7 +374,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         self.menu_open = True
         self.menu_popup = self.ids.popup_layer
         popup_width = min(dp(236), max(dp(200), self.width - dp(32)))
-        popup_height = dp(44 * 5)
+        popup_height = dp(52 * 5)
         self.menu_popup.size = (popup_width, popup_height)
         self.menu_popup.padding = dp(0)
         self.menu_popup.spacing = dp(0)
@@ -389,6 +397,9 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
                                text_color=self.text_color,
                                ripple_color=(.88, .87, .84, .38) if self.dark_mode else (.24, .23, .21, .24),
                                halign='center', valign='middle', padding=(0, 0))
+            if text == "Undo move" and not self.can_undo_move():
+                item.disabled = True
+                item.opacity = .45
             item.bind(size=lambda w, s: setattr(w, 'text_size', s),
                       on_release=lambda *_args, action=callback: Clock.schedule_once(
                           lambda _dt: action(), .12))
@@ -654,7 +665,78 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         if self.result_overlay is not None:
             self.result_overlay.dismiss()
         self.result_visible = False
+        Clock.schedule_once(self._show_difficulty_picker, .12)
+
+    def _show_difficulty_picker(self, *_):
+        if getattr(self, "_difficulty_picker", None) is not None and self._difficulty_picker._is_open:
+            return
+        view = ModalView(size_hint=(.90, None), height=dp(280), auto_dismiss=False,
+                         background="", background_color=(0, 0, 0, 0),
+                         overlay_color=(0, 0, 0, .42))
+        card = RoundCard(orientation="vertical", padding=(dp(20), dp(16)), spacing=dp(12),
+                         fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
+                         corner_radius=dp(26))
+        heading = Label(text="Choose difficulty", size_hint_y=None, height=dp(38),
+                        bold=True, font_size="22sp", color=self.text_color)
+        note = Label(text="Set the opponent strength for this game", size_hint_y=None,
+                     height=dp(26), font_size="14sp", color=self.muted_color)
+        choices_row = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
+        choice_buttons = {}
+        for level in ("easy", "normal", "hard"):
+            button = PixelButton(text=level.title(), corner_radius=dp(14), font_size="14sp")
+            button._difficulty_level = level
+            button.bind(on_release=lambda *_args, selected=level: self._select_difficulty(selected))
+            choice_buttons[level] = button
+            choices_row.add_widget(button)
+        actions = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(10))
+        back = PixelButton(text="Back", corner_radius=dp(14), font_size="14sp")
+        back.bind(on_release=lambda *_: self._cancel_difficulty_picker(view))
+        continue_button = PixelButton(text="Choose color", corner_radius=dp(14), font_size="14sp")
+        continue_button.fill_color = self.accent_color
+        continue_button.text_color = self._accent_text_color(self.accent_color)
+        continue_button.bind(on_release=lambda *_: self._continue_to_side_picker(view))
+        actions.add_widget(back)
+        actions.add_widget(continue_button)
+        card.add_widget(heading)
+        card.add_widget(note)
+        card.add_widget(choices_row)
+        card.add_widget(actions)
+        view.add_widget(card)
+        view._difficulty_choices = choice_buttons
+        self._difficulty_picker = view
+        self._refresh_difficulty_choices()
+        self._open_dialog_near_top(view, card)
+        card.opacity = 0
+        Animation(opacity=1, duration=.20, t="out_quad").start(card)
+
+    def _refresh_difficulty_choices(self):
+        view = getattr(self, "_difficulty_picker", None)
+        if view is None:
+            return
+        for level, button in view._difficulty_choices.items():
+            if level == self.difficulty:
+                button.fill_color = self.accent_color
+                button.text_color = self._accent_text_color(self.accent_color)
+            else:
+                button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
+                button.text_color = self.text_color
+
+    def _select_difficulty(self, level):
+        self.difficulty = level if level in {"easy", "normal", "hard"} else "normal"
+        app = App.get_running_app()
+        if app is not None:
+            app.config.set("game", "difficulty", self.difficulty)
+            app.config.write()
+        self._refresh_difficulty_choices()
+
+    def _continue_to_side_picker(self, view):
+        view.dismiss()
         Clock.schedule_once(self._show_side_picker, .12)
+
+    def _cancel_difficulty_picker(self, view):
+        view.dismiss()
+        self._populate_main_menu("home")
+        self._show_main_menu()
 
     def _show_side_picker(self, *_):
         if self._side_picker is not None and self._side_picker._is_open:
