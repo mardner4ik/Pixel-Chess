@@ -28,9 +28,25 @@ jobs:
           sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev
       - name: Build APK
+        id: build-apk
+        continue-on-error: true
         run: |
+          set -o pipefail
+          (set -e
           python -m pip install --upgrade pip buildozer==1.6.0 cython==0.29.37
-          buildozer android debug
+          buildozer android debug) 2>&1 | tee /tmp/android-build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            details=$(tail -n 35 /tmp/android-build.log | tr '\n' ' ' | cut -c1-4000)
+            details=${details//'%'/'%25'}
+            details=${details//$'\r'/'%0D'}
+            details=${details//$'\n'/'%0A'}
+            echo "::error title=Android build details::$details"
+          fi
+          exit "$status"
+      - name: Stop if Android build failed
+        if: steps.build-apk.outcome == 'failure'
+        run: exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: android-apk
@@ -52,7 +68,11 @@ jobs:
           sudo apt-get install -y libgl1 libgles2 libmtdev1 libx11-6 libxext6 \
             libxrender1 libxrandr2 libxcursor1 libxi6 libxinerama1 libxkbcommon0
       - name: Package Linux application
+        id: build-linux
+        continue-on-error: true
         run: |
+          set -o pipefail
+          (set -e
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pyinstaller
           pyinstaller --noconfirm --clean --onedir --name PixelChess \
@@ -63,7 +83,19 @@ jobs:
           chmod +x dist/install.sh
           mkdir -p Release
           version="${GITHUB_REF_NAME#v}"
-          tar -czf "Release/PixelChess-${version}-linux-x86_64.tar.gz" -C dist PixelChess README.txt install.sh
+          tar -czf "Release/PixelChess-${version}-linux-x86_64.tar.gz" -C dist PixelChess README.txt install.sh) 2>&1 | tee /tmp/linux-build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            details=$(tail -n 35 /tmp/linux-build.log | tr '\n' ' ' | cut -c1-4000)
+            details=${details//'%'/'%25'}
+            details=${details//$'\r'/'%0D'}
+            details=${details//$'\n'/'%0A'}
+            echo "::error title=Linux build details::$details"
+          fi
+          exit "$status"
+      - name: Stop if Linux build failed
+        if: steps.build-linux.outcome == 'failure'
+        run: exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x86_64
