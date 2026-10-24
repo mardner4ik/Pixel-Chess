@@ -29,10 +29,6 @@
             pos: (self.ripple_x - self.ripple_radius, self.ripple_y - self.ripple_radius)
             size: (self.ripple_radius * 2, self.ripple_radius * 2)
         StencilUnUse
-        RoundedRectangle:
-            pos: self.pos
-            size: self.size
-            radius: [self.corner_radius]
         StencilPop
 <Label>:
     font_name: 'PixelUI'

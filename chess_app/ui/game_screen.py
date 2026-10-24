@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 import random
 import threading
-import math
 from pathlib import Path
 
 import chess
@@ -58,8 +57,8 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         self._toast_event = None
         self._game_generation = 0
         self._bot_cancel_event = None
-        self._bot_think_deadline = None
-        self._bot_countdown_event = None
+        self._bot_think_started_at = None
+        self._bot_timer_event = None
         app = App.get_running_app()
         self.accent_mode = (app.config.get("appearance", "accent_mode")
                             if app is not None else "system")
@@ -595,10 +594,10 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         if self._bot_cancel_event is not None:
             self._bot_cancel_event.set()
             self._bot_cancel_event = None
-        self._bot_think_deadline = None
-        if self._bot_countdown_event is not None:
-            self._bot_countdown_event.cancel()
-            self._bot_countdown_event = None
+        self._bot_think_started_at = None
+        if self._bot_timer_event is not None:
+            self._bot_timer_event.cancel()
+            self._bot_timer_event = None
 
     def _start_bot(self, *_):
         if self._game_started and self.engine.board.turn != self.player_color and not self.engine.status()[1]:
@@ -609,10 +608,9 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             cancel_event = threading.Event()
             self._bot_cancel_event = cancel_event
             thinking_time = random.uniform(4.0, 15.0) if self.bot_thinking_delay else 0.0
-            if thinking_time:
-                self._bot_think_deadline = time.monotonic() + thinking_time
-                self._bot_countdown_event = Clock.schedule_interval(self._update_bot_countdown, .25)
-                self._update_bot_countdown()
+            self._bot_think_started_at = time.monotonic()
+            self._bot_timer_event = Clock.schedule_interval(self._update_bot_timer, .25)
+            self._update_bot_timer()
             future = BOT_POOL.submit(self._calculate_bot_move, snapshot, self.difficulty,
                                      thinking_time, cancel_event)
             future.add_done_callback(lambda result: Clock.schedule_once(
@@ -624,11 +622,11 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         engine.board = board
         return engine.bot_move(difficulty, thinking_time, cancel_event)
 
-    def _update_bot_countdown(self, *_):
-        if self._bot_think_deadline is None or not self._game_started:
+    def _update_bot_timer(self, *_):
+        if self._bot_think_started_at is None or not self._game_started:
             return False
-        remaining = max(0, math.ceil(self._bot_think_deadline - time.monotonic()))
-        status = f"OPPONENT THINKING · {remaining}s"
+        elapsed = max(0, int(time.monotonic() - self._bot_think_started_at))
+        status = f"OPPONENT THINKING · {elapsed // 60:02}:{elapsed % 60:02}"
         if self.time_control:
             status += f"  •  {self._clock_text(self.engine.board.turn)}"
         self.status_text = status
@@ -639,10 +637,10 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
                 or self.engine.board.turn == self.player_color or self.engine.status()[1]):
             return
         self._bot_cancel_event = None
-        self._bot_think_deadline = None
-        if self._bot_countdown_event is not None:
-            self._bot_countdown_event.cancel()
-            self._bot_countdown_event = None
+        self._bot_think_started_at = None
+        if self._bot_timer_event is not None:
+            self._bot_timer_event.cancel()
+            self._bot_timer_event = None
         try:
             move = future.result()
         except Exception:
@@ -665,9 +663,9 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         status, finished = self.engine.status()
         if not finished and status != "CHECK":
             status = "YOUR TURN" if self.engine.board.turn == self.player_color else "OPPONENT THINKING"
-            if self.engine.board.turn != self.player_color and self._bot_think_deadline is not None:
-                remaining = max(0, math.ceil(self._bot_think_deadline - time.monotonic()))
-                status = f"OPPONENT THINKING · {remaining}s"
+            if self.engine.board.turn != self.player_color and self._bot_think_started_at is not None:
+                elapsed = max(0, int(time.monotonic() - self._bot_think_started_at))
+                status = f"OPPONENT THINKING · {elapsed // 60:02}:{elapsed % 60:02}"
         if self.time_control and self._game_started and not finished:
             side = self.engine.board.turn
             status = f"{status}  •  {self._clock_text(side)}"

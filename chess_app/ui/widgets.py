@@ -20,26 +20,8 @@ class PixelButton(Button):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._ripple_fade = None
         self._pressed_touch = None
-
-    def on_press(self):
-        # Touch feedback is drawn with the shared ripple. Do not animate the
-        # button's base fill: menu actions may replace that fill while release
-        # callbacks are running (for example, the active menu state).
-        pass
-
-    def on_release(self):
-        pass
-
-    def on_touch_up(self, touch):
-        result = super().on_touch_up(touch)
-        if self._pressed_touch is touch:
-            self._pressed_touch = None
-            if self._ripple_fade is not None:
-                self._ripple_fade.cancel()
-            self._ripple_fade = Clock.schedule_once(self._fade_ripple, .18)
-        return result
+        self._ripple_fade_event = None
 
     def on_touch_down(self, touch):
         # ButtonBehavior still grabs touches for disabled buttons in some Kivy
@@ -47,24 +29,38 @@ class PixelButton(Button):
         # of the Advanced button and swallow its touch.
         if self.disabled:
             return False
-        if self.collide_point(*touch.pos) and self.disabled is False:
-            self._pressed_touch = touch
-            if self._ripple_fade is not None:
-                self._ripple_fade.cancel()
-            self.ripple_x, self.ripple_y = touch.pos
-            corners = ((self.x, self.y), (self.right, self.y), (self.x, self.top), (self.right, self.top))
-            self.ripple_radius = 0
-            self.ripple_alpha = 0
+        if self._pressed_touch is not None and self._pressed_touch is not touch:
+            return False
+        if self.collide_point(*touch.pos):
+            # Cancel before resetting the animated properties. Resetting first
+            # lets the previous ripple frame overwrite the new touch position.
             Animation.cancel_all(self, "ripple_radius", "ripple_alpha")
-            radius = max(((x - self.ripple_x) ** 2 + (y - self.ripple_y) ** 2) ** .5 for x, y in corners)
-            # Keep the effect short and property-light so touch feedback never
-            # competes with board updates on low-end Android GPUs.
-            Animation(ripple_radius=radius, duration=.20, t="out_quad").start(self)
-            self.ripple_alpha = .42
+            if self._ripple_fade_event is not None:
+                self._ripple_fade_event.cancel()
+                self._ripple_fade_event = None
+            self._pressed_touch = touch
+            self.ripple_x, self.ripple_y = touch.pos
+            self.ripple_radius = 0
+            self.ripple_alpha = .30
+            farthest = max(((x - self.ripple_x) ** 2 + (y - self.ripple_y) ** 2) ** .5
+                           for x, y in ((self.x, self.y), (self.right, self.y),
+                                        (self.x, self.top), (self.right, self.top)))
+            Animation(ripple_radius=farthest, duration=.24, t="out_quad").start(self)
         return super().on_touch_down(touch)
 
+    def on_touch_up(self, touch):
+        result = super().on_touch_up(touch)
+        if self._pressed_touch is touch:
+            self._pressed_touch = None
+            if self._ripple_fade_event is not None:
+                self._ripple_fade_event.cancel()
+            self._ripple_fade_event = Clock.schedule_once(self._fade_ripple, .08)
+        return result
+
     def _fade_ripple(self, *_):
-        Animation(ripple_alpha=0, duration=.20, t="out_quad").start(self)
+        self._ripple_fade_event = None
+        Animation.cancel_all(self, "ripple_alpha")
+        Animation(ripple_alpha=0, duration=.16, t="out_quad").start(self)
 
 
 class MenuIconButton(PixelButton):
@@ -243,7 +239,11 @@ class IconActionButton(PixelButton):
         self.content.add_widget(self.detail_label)
         self.content.add_widget(self.arrow_label)
         self.add_widget(self.content)
-        self.bind(pos=self._layout_content, size=self._layout_content,
+        self._layout_trigger = Clock.create_trigger(self._layout_content, 0)
+        self.bind(pos=self._layout_trigger, size=self._layout_trigger,
+                  x=self._layout_trigger, y=self._layout_trigger,
+                  width=self._layout_trigger, height=self._layout_trigger,
+                  parent=self._layout_trigger,
                   text_color=self._sync_content_colors,
                   muted_color=self._sync_content_colors,
                   icon_color=self._sync_content_colors)
