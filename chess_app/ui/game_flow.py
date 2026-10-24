@@ -14,6 +14,7 @@ from kivy.uix.modalview import ModalView
 from kivy.uix.widget import Widget
 
 from chess_app.core.engine import ChessEngine
+from chess_app.paths import asset_path
 from chess_app.ui.widgets import PixelButton, RoundCard, SettingsIcon
 
 
