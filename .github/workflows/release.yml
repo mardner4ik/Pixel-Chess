@@ -1,0 +1,119 @@
+name: Build and publish desktop and Android releases
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: ${{ runner.os }}-android-${{ hashFiles('buildozer.spec') }}
+          restore-keys: ${{ runner.os }}-android-
+      - name: Install Android build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev
+      - name: Build APK
+        run: |
+          python -m pip install --upgrade pip buildozer==1.6.0 cython==0.29.37
+          buildozer android debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: bin/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  linux:
+    name: Linux x86_64 bundle
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Kivy runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libgles2 libmtdev1 libx11-6 libxext6 \
+            libxrender1 libxrandr2 libxcursor1 libxi6 libxinerama1 libxkbcommon0
+      - name: Package Linux application
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+          pyinstaller --noconfirm --clean --onedir --name PixelChess \
+            --add-data "assets:assets" \
+            --add-data "chess_app/ui/theme.kv:chess_app/ui" main.py
+          cp packaging/linux/README.txt dist/README.txt
+          cp packaging/linux/install.sh dist/install.sh
+          chmod +x dist/install.sh
+          mkdir -p Release
+          version="${GITHUB_REF_NAME#v}"
+          tar -C dist -czf "Release/PixelChess-${version}-linux-x86_64.tar.gz" PixelChess README.txt install.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: Release/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build Windows application
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+          pyinstaller --noconfirm --clean --windowed --onedir --name PixelChess `
+            --icon assets/pixelchess-icon.ico `
+            --add-data "assets;assets" `
+            --add-data "chess_app/ui/theme.kv;chess_app/ui" main.py
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          $env:APP_VERSION = $env:GITHUB_REF_NAME -replace '^v', ''
+          New-Item -ItemType Directory -Force -Path Release | Out-Null
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$env:APP_VERSION" "/O$PWD\Release" packaging\windows\PixelChess.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: Release/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: [android, linux, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Pixel Chess ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release-assets/**
+          fail_on_unmatched_files: true

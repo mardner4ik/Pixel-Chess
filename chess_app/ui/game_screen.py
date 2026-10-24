@@ -6,6 +6,7 @@ from pathlib import Path
 import chess
 from kivy.app import App
 from kivy.clock import Clock
+from kivy.metrics import dp
 from kivy.properties import ListProperty, StringProperty, NumericProperty, BooleanProperty, ColorProperty
 from kivy.uix.floatlayout import FloatLayout
 
@@ -63,6 +64,12 @@ class GameScreen(BotThinkingMixin, AppearanceMixin, GameNavigationMixin, GameFlo
         self._background_music = None
         self._move_sound = None
         self._game_started = False
+        self._multiplayer_active = False
+        self._mp_room = None
+        self._mp_poll_event = None
+        self._mp_seq = 0
+        self._mp_local_token = None
+        self._mp_room_finished = False
         self.difficulty = app.config.getdefault("game", "difficulty", "normal") if app is not None else "normal"
         self.time_control = app.config.getint("game", "time_control") if app is not None and app.config.has_option("game", "time_control") else 0
         self.bot_thinking_delay = app.config.getboolean("game", "bot_thinking_delay") if app is not None and app.config.has_option("game", "bot_thinking_delay") else True
@@ -84,8 +91,23 @@ class GameScreen(BotThinkingMixin, AppearanceMixin, GameNavigationMixin, GameFlo
         self.menu_button.bind(on_release=self._open_about_menu)
         self.board_widget = ChessBoard(self, size_hint=(None, None))
         self.ids.board_container.add_widget(self.board_widget)
+        from kivy.uix.boxlayout import BoxLayout
+        from kivy.uix.label import Label
+        from chess_app.ui.widgets import CountryFlag
+        self._opponent_identity = BoxLayout(orientation='horizontal', spacing=dp(7),
+                                            size_hint=(None, None), size=(dp(170), dp(25)),
+                                            opacity=0)
+        self._opponent_flag = CountryFlag(country='ZZ', size_hint=(None, None), size=(dp(29), dp(19)))
+        self._opponent_name = Label(text='', color=self.text_color, font_size='12sp', bold=True,
+                                    halign='left', valign='middle', size_hint_x=None, width=dp(130))
+        self._opponent_name.bind(size=lambda w, s: setattr(w, 'text_size', s))
+        self._opponent_identity.add_widget(self._opponent_flag)
+        self._opponent_identity.add_widget(self._opponent_name)
+        self.add_widget(self._opponent_identity)
         self.bind(size=self._fit_board)
         Clock.schedule_once(self._fit_board, 0)
+        self.bind(size=self._position_opponent_identity)
+        self._position_opponent_identity()
         self._build_main_menu()
         self._show_main_menu()
         self._restore_saved_game()
@@ -98,6 +120,10 @@ class GameScreen(BotThinkingMixin, AppearanceMixin, GameNavigationMixin, GameFlo
         side = min(box.width, box.height)
         self.board_widget.size = (side, side)
         self.board_widget.pos = (box.center_x - side / 2, box.center_y - side / 2)
+
+    def _position_opponent_identity(self, *_):
+        if hasattr(self, '_opponent_identity'):
+            self._opponent_identity.pos = (dp(14), self.height - dp(36))
 
     def choose_square(self, square):
         if not self._game_started:
@@ -112,7 +138,10 @@ class GameScreen(BotThinkingMixin, AppearanceMixin, GameNavigationMixin, GameFlo
                 self.engine.play(move)
                 self._play_move_sound()
                 self._consume_clock(chess.WHITE if self.player_color else chess.BLACK)
-                self._save_game()
+                if self._multiplayer_active:
+                    self._send_multiplayer_move(move.uci())
+                else:
+                    self._save_game()
                 self.selection = None
                 self.board_widget.selected = []
                 self.board_widget.targets = []
@@ -120,9 +149,10 @@ class GameScreen(BotThinkingMixin, AppearanceMixin, GameNavigationMixin, GameFlo
                 self.board_widget._drop_start_pos = None
                 self.board_widget.animate_move(move, start_pos=drop_start)
                 self.refresh()
-                if self.engine.board.turn != self.player_color and not self.engine.status()[1]:
+                if (not self._multiplayer_active and self.engine.board.turn != self.player_color
+                        and not self.engine.status()[1]):
                     Clock.schedule_once(self._start_bot, .30)
-                else:
+                elif not self._multiplayer_active:
                     self._finish_round()
                 return
         piece = board.piece_at(square)

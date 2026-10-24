@@ -23,6 +23,11 @@ class GameFlowMixin:
         if not self._game_started and self.result_visible:
             return
         self._game_started = False
+        if getattr(self, '_multiplayer_active', False):
+            self._mp_room_finished = True
+        if getattr(self, '_mp_poll_event', None) is not None:
+            self._mp_poll_event.cancel()
+            self._mp_poll_event = None
         self._cancel_bot_thinking()
         status, _ = self.engine.status()
         self.result_title = "Game over"
@@ -31,7 +36,8 @@ class GameFlowMixin:
         if self._clock_event is not None:
             self._clock_event.cancel()
             self._clock_event = None
-        self._clear_saved_game()
+        if not getattr(self, '_multiplayer_active', False):
+            self._clear_saved_game()
 
     def on_result_visible(self, _instance, visible):
         if not visible:
@@ -75,15 +81,21 @@ class GameFlowMixin:
             overlay.add_widget(content)
             overlay._title_label = title
             overlay._detail_label = detail
+            overlay._restart_button = restart
             self.result_overlay = overlay
 
         self.result_overlay._title_label.text = self.result_title
         self.result_overlay._detail_label.text = self.result_detail
+        multiplayer_result = getattr(self, '_mp_room', None) is not None
+        self.result_overlay._restart_button.disabled = multiplayer_result
+        self.result_overlay._restart_button.opacity = .42 if multiplayer_result else 1
         if not self.result_overlay._is_open:
             self._open_dialog_near_top(self.result_overlay, self.result_overlay._result_card)
 
     def _return_to_main_menu(self):
         self._cancel_bot_thinking()
+        if getattr(self, '_mp_room', None) is not None:
+            self._close_multiplayer_session()
         self._game_started = False
         self.selection = None
         self.result_visible = False

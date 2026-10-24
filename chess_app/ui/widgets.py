@@ -2,6 +2,7 @@ from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.properties import ListProperty, NumericProperty, BooleanProperty, StringProperty
+from kivy.graphics import Color, Rectangle, Line, Triangle, Ellipse
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.button import Button
@@ -63,12 +64,165 @@ class PixelButton(Button):
         Animation(ripple_alpha=0, duration=.16, t="out_quad").start(self)
 
 
+class FlatPixelButton(Button):
+    """ScrollView-safe button with no stencil canvas inherited from PixelButton."""
+
+    ripple_x = NumericProperty(0)
+    ripple_y = NumericProperty(0)
+    ripple_radius = NumericProperty(0)
+    ripple_alpha = NumericProperty(0)
+    ripple_color = ListProperty([.72, .48, .37, 1])
+    fill_color = ListProperty([.85, .83, .79, 1])
+    text_color = ListProperty([.12, .12, .12, 1])
+    corner_radius = NumericProperty(dp(24))
+
+    def on_touch_down(self, touch):
+        if self.disabled:
+            return False
+        if self.collide_point(*touch.pos):
+            self._pressed_touch = touch
+            self._start_ripple(*touch.pos)
+        return super().on_touch_down(touch)
+
+    def on_touch_up(self, touch):
+        handled = super().on_touch_up(touch)
+        if getattr(self, '_pressed_touch', None) is touch:
+            self._pressed_touch = None
+            if getattr(self, '_ripple_fade_event', None):
+                self._ripple_fade_event.cancel()
+            self._ripple_fade_event = Clock.schedule_once(self._fade_ripple, .08)
+        return handled
+
+    def _start_ripple(self, x, y):
+        Animation.cancel_all(self, 'ripple_radius', 'ripple_alpha')
+        if getattr(self, '_ripple_fade_event', None):
+            self._ripple_fade_event.cancel()
+            self._ripple_fade_event = None
+        self.ripple_x, self.ripple_y = x, y
+        self.ripple_radius = 0
+        self.ripple_alpha = .30
+        edge_clearance = min(x - self.x, self.right - x, y - self.y, self.top - y)
+        max_radius = max(0, edge_clearance - dp(2))
+        Animation(ripple_radius=max_radius, duration=.28, t='out_quad').start(self)
+
+    def _fade_ripple(self, *_):
+        self._ripple_fade_event = None
+        Animation.cancel_all(self, 'ripple_alpha')
+        Animation(ripple_alpha=0, duration=.18, t='out_quad').start(self)
+
+
 class MenuIconButton(PixelButton):
     pass
 
 
 class AccentChoiceButton(PixelButton):
     selected = BooleanProperty(False)
+
+
+class RoomEntryButton(FlatPixelButton):
+    """ScrollView-safe room row button, without PixelButton's nested stencil."""
+
+    fill_color = ListProperty([.90, .89, .86, 1])
+    text_color = ListProperty([.12, .12, .12, 1])
+    corner_radius = NumericProperty(dp(14))
+
+
+class CountryFlag(Widget):
+    """Tiny vector country flag, avoiding missing emoji glyphs in custom fonts."""
+
+    country = StringProperty('UA')
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(pos=self.redraw, size=self.redraw, country=self.redraw)
+        self.redraw()
+
+    def redraw(self, *_):
+        self.canvas.clear()
+        x, y, w, h = self.x, self.y, self.width, self.height
+        if w <= 0 or h <= 0:
+            return
+        c = self.country.upper()
+        if c in {'UN', 'ZZ', ''}:
+            with self.canvas:
+                Color(.18, .42, .62, 1)
+                Ellipse(pos=(x, y), size=(w, h))
+                Color(.92, .96, 1, 1)
+                Line(ellipse=(x + w*.12, y + h*.08, w*.76, h*.84), width=max(1, w*.035))
+                Line(ellipse=(x + w*.34, y + h*.08, w*.32, h*.84), width=max(1, w*.03))
+                Line(points=(x+w*.15, y+h*.5, x+w*.85, y+h*.5), width=max(1, w*.03))
+            return
+        # Main stripe patterns cover countries used in the lobby and common IPs.
+        stripes = {
+            'UA': ['#0057B7', '#FFD700'], 'PL': ['#FFFFFF', '#DC143C'],
+            'DE': ['#000000', '#DD0000', '#FFCE00'], 'FR': ['#0055A4', '#FFFFFF', '#EF4135'],
+            'IT': ['#009246', '#FFFFFF', '#CE2B37'], 'NL': ['#AE1C28', '#FFFFFF', '#21468B'],
+            'RU': ['#FFFFFF', '#0039A6', '#D52B1E'], 'AT': ['#ED2939', '#FFFFFF', '#ED2939'],
+            'HU': ['#CE2939', '#FFFFFF', '#477050'], 'RO': ['#002B7F', '#FCD116', '#CE1126'],
+            'ES': ['#AA151B', '#F1BF00', '#AA151B'], 'BG': ['#FFFFFF', '#00966E', '#D62612'],
+            'IN': ['#FF9933', '#FFFFFF', '#138808'], 'JP': ['#FFFFFF'],
+            'US': ['#B22234', '#FFFFFF', '#B22234', '#FFFFFF', '#B22234', '#FFFFFF', '#B22234'],
+            'GB': ['#012169'], 'AU': ['#012169'], 'CA': ['#D80621', '#FFFFFF', '#D80621'],
+            'BR': ['#009739'], 'TR': ['#E30A17'], 'CZ': ['#FFFFFF', '#D7141A'],
+            'SE': ['#006AA7'], 'NO': ['#BA0C2F'], 'FI': ['#FFFFFF'], 'CH': ['#D52B1E'],
+            'GR': ['#0D5EAF', '#FFFFFF', '#0D5EAF', '#FFFFFF', '#0D5EAF'],
+            'IE': ['#169B62', '#FFFFFF', '#FF883E'], 'MX': ['#006847', '#FFFFFF', '#CE1126'],
+        }
+        colors = stripes.get(c, ['#9AA0A6', '#FFFFFF', '#9AA0A6'])
+        with self.canvas:
+            # White border and rounded-card-like corners are intentionally omitted
+            # to keep this lightweight and crisp at small Android sizes.
+            Color(1, 1, 1, 1)
+            Rectangle(pos=(x, y), size=(w, h))
+            if c in {'US'}:
+                for i, hex_color in enumerate(colors):
+                    Color(*_hex_rgb(hex_color))
+                    Rectangle(pos=(x, y + h * (len(colors) - i - 1) / len(colors)), size=(w, h / len(colors) + .5))
+                Color(0.08, 0.18, 0.38, 1)
+                Rectangle(pos=(x, y + h * .52), size=(w * .46, h * .48))
+            elif c in {'FR', 'IT', 'NL', 'CA', 'IE'}:
+                for i, hex_color in enumerate(colors):
+                    Color(*_hex_rgb(hex_color))
+                    Rectangle(pos=(x + w * i / 3, y), size=(w / 3 + .5, h))
+            elif c in {'JP', 'BR', 'GB', 'AU', 'TR', 'CZ', 'SE', 'NO', 'CH'}:
+                Color(*_hex_rgb(colors[0]))
+                Rectangle(pos=(x, y), size=(w, h))
+                if c == 'JP':
+                    Color(.74, .05, .18, 1)
+                    Ellipse(pos=(x + w * .34, y + h * .20), size=(w * .32, h * .60))
+                elif c == 'BR':
+                    Color(1, .86, .1, 1)
+                    Triangle(points=(x+w*.5,y+h*.82,x+w*.88,y+h*.5,x+w*.5,y+h*.18))
+                    Color(.05, .23, .55, 1)
+                    Ellipse(pos=(x+w*.39,y+h*.31), size=(w*.22,h*.38))
+                elif c in {'GB', 'AU'}:
+                    Color(1,1,1,1); Line(points=(x,y,x+w,y+h),width=max(1,w*.16)); Line(points=(x,y+h,x+w,y),width=max(1,w*.16))
+                    Color(.78,.08,.16,1); Line(points=(x,y,x+w,y+h),width=max(1,w*.07)); Line(points=(x,y+h,x+w,y),width=max(1,w*.07))
+                    Color(1,1,1,1); Rectangle(pos=(x+w*.40,y),size=(w*.20,h)); Rectangle(pos=(x,y+h*.40),size=(w,h*.20))
+                    Color(.78,.08,.16,1); Rectangle(pos=(x+w*.45,y),size=(w*.10,h)); Rectangle(pos=(x,y+h*.44),size=(w,h*.12))
+                elif c == 'CZ':
+                    Color(.05,.22,.53,1); Triangle(points=(x,y,x+w*.52,y+h*.5,x,y+h))
+                elif c in {'SE','NO','CH'}:
+                    Color(1,1,1,1)
+                    if c == 'CH':
+                        Rectangle(pos=(x+w*.43,y+h*.2),size=(w*.14,h*.6)); Rectangle(pos=(x+w*.2,y+h*.42),size=(w*.6,h*.16))
+                    else:
+                        Rectangle(pos=(x+w*.30,y),size=(w*.12,h)); Rectangle(pos=(x,y+h*.42),size=(w,h*.16))
+                        if c == 'NO':
+                            Color(.02,.16,.34,1); Rectangle(pos=(x+w*.27,y),size=(w*.18,h)); Rectangle(pos=(x,y+h*.37),size=(w,h*.26))
+                            Color(1,1,1,1); Rectangle(pos=(x+w*.32,y),size=(w*.08,h)); Rectangle(pos=(x,y+h*.43),size=(w,h*.14))
+            else:
+                for i, hex_color in enumerate(colors):
+                    Color(*_hex_rgb(hex_color))
+                    Rectangle(pos=(x, y + h * (len(colors) - i - 1) / len(colors)), size=(w, h / len(colors) + .5))
+                if c == 'CA':
+                    Color(.78, .04, .12, 1)
+                    Triangle(points=(x+w*.5,y+h*.68,x+w*.43,y+h*.46,x+w*.5,y+h*.54,x+w*.57,y+h*.46))
+
+
+def _hex_rgb(value):
+    value = value.lstrip('#')
+    return tuple(int(value[i:i + 2], 16) / 255 for i in (0, 2, 4)) + (1,)
 
 
 class MenuPanel(BoxLayout):

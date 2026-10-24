@@ -58,11 +58,20 @@ class GameDialogsMixin:
     def _accept_resignation(self, view):
         view.dismiss()
         self._cancel_bot_thinking()
+        if getattr(self, '_multiplayer_active', False) and getattr(self, '_mp_room', None):
+            room = self._mp_room
+            self._mp_async(lambda: self._mp_client.resign(room['code'], room['token']))
+            self._mp_room_finished = True
+            if self._mp_poll_event:
+                self._mp_poll_event.cancel()
+                self._mp_poll_event = None
+            self._multiplayer_active = False
         self._game_started = False
         if self._clock_event is not None:
             self._clock_event.cancel()
             self._clock_event = None
-        self._clear_saved_game()
+        if not getattr(self, '_mp_room', None):
+            self._clear_saved_game()
         self.status_text = 'YOU RESIGNED'
         self.result_title = 'You resigned'
         self.result_detail = f'Opponent wins   ·   {len(self.engine.board.move_stack)} plies   ·   {self._elapsed_text()}'

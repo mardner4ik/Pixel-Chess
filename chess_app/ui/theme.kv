@@ -30,6 +30,25 @@
             size: (self.ripple_radius * 2, self.ripple_radius * 2)
         StencilUnUse
         StencilPop
+<FlatPixelButton>:
+    background_normal: ''
+    background_down: ''
+    background_color: (0, 0, 0, 0)
+    color: self.text_color
+    font_size: '15sp'
+    bold: True
+    canvas.before:
+        Color:
+            rgba: self.fill_color
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [self.corner_radius]
+        Color:
+            rgba: (self.ripple_color[0], self.ripple_color[1], self.ripple_color[2], self.ripple_color[3] * self.ripple_alpha)
+        Ellipse:
+            pos: (self.ripple_x - self.ripple_radius, self.ripple_y - self.ripple_radius)
+            size: (self.ripple_radius * 2, self.ripple_radius * 2)
 <Label>:
     font_name: 'PixelUI'
 <Button>:

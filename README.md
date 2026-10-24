@@ -12,7 +12,7 @@ A minimalist, mobile-first chess game built with [Kivy](https://kivy.org/). Choo
 - Four board palettes and two piece artwork styles
 - Responsive touch controls, legal move hints, and animated moves
 - Google Sans Flex typography inspired by the Pixel interface
-- Main menu with Play, Settings, and About; Multiplayer is shown as a future feature
+- Main menu with Play, Settings, About, and an initial multiplayer lobby/profile flow
 - Android 12+ wallpaper-derived system accent colors, plus selectable palettes and a fallback for older Android and desktop
 - Custom white and black chess piece artwork shipped as PNG assets with SVG source files
 - Choose to play as White or Black at the start of each game
@@ -29,7 +29,11 @@ pip install -r requirements.txt
 python main.py
 ```
 
-From the main menu, choose **Play → Singleplayer**, select the opponent strength, then choose White or Black. The **Advanced** section offers optional clock controls and a choice between a 4–15 second thinking delay or instant bot moves. The clock is off by default. While the bot thinks, the game status shows a stopwatch that stops when it moves. Tap a piece to show its legal moves, then tap a destination, or drag a piece to a square. The in-game menu provides Settings, About, **Save**, Undo, and **Resign**. Save writes a resumable game and confirms with a brief toast. Settings controls volume, soundtrack, board and piece styles, and accent colors. An unfinished game can be resumed from the main menu. After a game ends, choose **Main menu** or **Restart**. Multiplayer is visible but disabled while it is being developed.
+From the main menu, choose **Play → Singleplayer**, select the opponent strength, then choose White or Black. The **Advanced** section offers optional clock controls and a choice between a 4–15 second thinking delay or instant bot moves. The clock is off by default. While the bot thinks, the game status shows a stopwatch that stops when it moves. Tap a piece to show its legal moves, then tap a destination, or drag a piece to a square. The in-game menu provides Settings, About, **Save**, Undo, and **Resign**. Save writes a resumable game and confirms with a brief toast. Settings controls volume, soundtrack, board and piece styles, and accent colors. An unfinished game can be resumed from the main menu. After a game ends, choose **Main menu** or **Restart**. The multiplayer screen connects to a separately deployed Flask service, detects the player country from their public IP, lists public rooms, and supports private room codes. Moves are validated and relayed by the server over HTTPS polling. Multiplayer games do not offer Save or Undo.
+
+## Multiplayer networking status
+
+This implementation uses the Flask server as a relay rather than direct P2P: the server stores active rooms and validates moves, and both clients poll it over HTTPS. The standalone service project is in `multiplayer_server/` and is intentionally ignored by this repository's `.gitignore`, as requested; deploy that folder separately to PythonAnywhere. Configure its HTTPS URL under Multiplayer → Connect to server. The service needs a persistent SQLite path configured in its WSGI environment. Country is detected on the device via ipapi.co, so the PythonAnywhere account does not need outbound access for geolocation.
 
 ## Build for Android
 
@@ -40,6 +44,10 @@ buildozer android debug
 ```
 
 The app configuration is in [`buildozer.spec`](buildozer.spec). Generated build files and APKs are excluded from version control.
+
+## Desktop releases
+
+Tagged versions publish an Android APK, a portable Linux x86_64 bundle, and a Windows installer on the GitHub Releases page. On Linux, extract the `PixelChess-*-linux-x86_64.tar.gz` archive and run `./PixelChess/PixelChess`, or run `./install.sh` to add it to the current user's applications menu. The Linux bundle targets x86_64 systems with glibc; Kivy's system OpenGL and input libraries must be installed.
 
 ## Project layout
 

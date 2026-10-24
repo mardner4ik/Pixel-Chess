@@ -32,6 +32,7 @@ class PixelChessApp(App):
                                      "bot_thinking_delay": "1",
                                      "board_palette": "sage", "piece_style": "pixel",
                                      "soundtrack": "friday_morning"})
+        config.setdefaults("multiplayer", {"nickname": "", "country": "ZZ", "server_url": ""})
 
     def build(self):
         font_path = os.path.join(os.path.dirname(__file__), "assets", "fonts", "GoogleSansFlex.ttf")

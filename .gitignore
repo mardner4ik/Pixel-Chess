@@ -7,6 +7,9 @@ venv/
 
 # Kivy / Buildozer / Android build outputs
 .buildozer/
+build/
+dist/
+Release/
 bin/
 *.apk
 *.aab
@@ -20,3 +23,6 @@ Thumbs.db
 
 # Local Kivy application settings
 pixelchess.ini
+
+# Separately deployed PythonAnywhere multiplayer service
+multiplayer_server/
