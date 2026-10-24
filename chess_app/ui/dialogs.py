@@ -15,7 +15,8 @@ import webbrowser
 from chess_app.ui.board import ACCENT_PALETTES
 from chess_app.ui.system_theme import get_system_accent_color
 from chess_app.ui.soundtracks import SOUNDTRACKS, SOUNDTRACKS_BY_ID
-from chess_app.ui.widgets import PixelButton, AccentChoiceButton, RoundCard
+from chess_app.ui.widgets import (PixelButton, AccentChoiceButton, RoundCard,
+                                  IconActionButton, SettingsIcon)
 
 
 class GameDialogsMixin:
@@ -57,6 +58,7 @@ class GameDialogsMixin:
 
     def _accept_resignation(self, view):
         view.dismiss()
+        self._cancel_bot_thinking()
         self._game_started = False
         if self._clock_event is not None:
             self._clock_event.cancel()
@@ -68,16 +70,25 @@ class GameDialogsMixin:
         self.result_visible = True
 
     def _open_dialog_near_top(self, view, card):
-        # ModalView is an AnchorLayout and centers its direct child. Put the
-        # card in a full-screen FloatLayout so it stays centered independently
-        # of the dialog's internal padding and action layout.
-        width_hint = view.size_hint_x or .90
-        card_height = view.height
+        """Open a centered card, safely detaching it when a dialog is reopened."""
+        old_container = getattr(view, "_dialog_container", None)
+        parent = card.parent
+        if parent is not None:
+            parent.remove_widget(card)
+        if old_container is not None and old_container.parent is view:
+            view.remove_widget(old_container)
+
+        # ModalView expands to the window when opened. Keep the original card
+        # dimensions so reopening a dialog does not turn its card full-screen.
+        if not hasattr(view, "_dialog_card_width_hint"):
+            view._dialog_card_width_hint = view.size_hint_x or .90
+            view._dialog_card_height = view.height
+        width_hint = view._dialog_card_width_hint
+        card_height = view._dialog_card_height
         view.size_hint = (1, 1)
         card.size_hint = (width_hint, None)
         card.height = card_height
         card.pos_hint = {"center_x": .5, "center_y": .5}
-        view.remove_widget(card)
         container = FloatLayout(size_hint=(1, 1))
         container.add_widget(card)
         view.add_widget(container)
@@ -87,100 +98,102 @@ class GameDialogsMixin:
     def _show_settings(self):
         from kivy.uix.slider import Slider
 
-        view = ModalView(size_hint=(.92, None), height=dp(570), auto_dismiss=True,
-                         background='', background_color=(0, 0, 0, 0),
+        view = ModalView(size_hint=(.94, None), height=dp(450), auto_dismiss=True,
+                         background="", background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .38))
-        card = RoundCard(orientation='vertical', padding=(dp(24), dp(18), dp(24), dp(14)), spacing=dp(10),
+        card = RoundCard(orientation="vertical", padding=(dp(20), dp(16)), spacing=dp(8),
                          fill_color=(.16, .16, .15, 1) if self.dark_mode else (.99, .98, .95, 1),
-                         corner_radius=dp(30))
-        heading = Label(text='Settings', size_hint_y=None, height=dp(40), bold=True,
-                        font_size='24sp', color=self.text_color, halign='left')
-        heading.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        volume_label = Label(text=f'Master volume  {round(self.master_volume * 100)}%',
-                             size_hint_y=None, height=dp(28), color=self.text_color,
-                             font_size='16sp', halign='left')
-        volume_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        slider = Slider(min=0, max=1, value=self.master_volume, size_hint_y=None,
-                        height=dp(38), cursor_size=(dp(24), dp(24)))
-        slider.value_track = True
-        slider.value_track_color = self.accent_color
-        self._settings_slider = slider
-        slider.bind(value=lambda _slider, value: self._update_volume_controls(
+                         corner_radius=dp(28))
+        heading = Label(text="Settings", size_hint_y=None, height=dp(34),
+                        bold=True, font_size="24sp", color=self.text_color, halign="left")
+        heading.bind(size=lambda widget, size: setattr(widget, "text_size", size))
+
+        def section(title):
+            label = Label(text=title, size_hint_y=None, height=dp(16),
+                          color=self.muted_color, font_size="12sp", bold=True,
+                          halign="left", valign="middle")
+            label.bind(size=lambda widget, size: setattr(widget, "text_size", size))
+            return label
+
+        surface = (.29, .29, .28, 1) if self.dark_mode else (.90, .89, .86, 1)
+        volume_row = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(10))
+        volume_icon = SettingsIcon(icon="volume", tint=self.accent_color,
+                                   size_hint=(None, None), size=(dp(36), dp(36)))
+        volume_text = BoxLayout(orientation="vertical", spacing=-dp(2),
+                                size_hint_x=None, width=dp(112))
+        volume_title = Label(text="Master volume", color=self.text_color,
+                             font_size="14sp", bold=True, halign="left", valign="bottom")
+        volume_label = Label(text=f"{round(self.master_volume * 100)}%",
+                             color=self.muted_color, font_size="12sp", halign="left", valign="top")
+        volume_text.add_widget(volume_title)
+        volume_text.add_widget(volume_label)
+        volume_slider = Slider(min=0, max=1, value=self.master_volume,
+                               cursor_size=(dp(24), dp(24)))
+        volume_slider.value_track = True
+        volume_slider.value_track_color = self.accent_color
+        self._settings_slider = volume_slider
+        volume_slider.bind(value=lambda _slider, value: self._update_volume_controls(
             value, volume_label))
-        difficulty_label = Label(text=f"Opponent strength  {self.difficulty.title()}  ·  tap to change",
-                                 size_hint_y=None, height=dp(26), color=self.text_color,
-                                 font_size='13sp', halign='left')
-        difficulty_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        difficulty_button = PixelButton(text=difficulty_label.text, size_hint_y=None, height=dp(42),
-                                        font_size='14sp', corner_radius=dp(13))
-        difficulty_button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-        difficulty_button.text_color = self.text_color
-        difficulty_button.bind(on_release=lambda *_: self._cycle_difficulty(difficulty_button))
-        clock_button = PixelButton(text=f"Time control  ·  {'Off' if not self.time_control else str(self.time_control) + ' min'}  ·  tap to change",
-                                   size_hint_y=None, height=dp(42), font_size='14sp', corner_radius=dp(13))
-        clock_button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-        clock_button.text_color = self.text_color
-        clock_button.bind(on_release=lambda *_: self._cycle_time_control(clock_button))
-        board_button = PixelButton(text=f"Board colors  ·  {self.board_palette.title()}  ·  tap to change",
-                                   size_hint_y=None, height=dp(42), font_size='14sp', corner_radius=dp(13))
-        board_button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-        board_button.text_color = self.text_color
-        board_button.bind(on_release=lambda *_: self._cycle_board_palette(board_button))
-        pieces_button = PixelButton(text=f"Piece style  ·  {'Vector' if self.piece_style == 'vector' else 'Pixel'}  ·  tap to change",
-                                    size_hint_y=None, height=dp(42), font_size='14sp', corner_radius=dp(13))
-        pieces_button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-        pieces_button.text_color = self.text_color
-        pieces_button.bind(on_release=lambda *_: self._cycle_piece_style(pieces_button))
-        current_track = SOUNDTRACKS_BY_ID.get(self.soundtrack_id, SOUNDTRACKS[0])
-        soundtrack_button = PixelButton(
-            text=f"Music  ·  {current_track['title']}  ·  tap to change",
-            size_hint_y=None, height=dp(42), font_size='14sp', corner_radius=dp(13))
-        soundtrack_button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-        soundtrack_button.text_color = self.text_color
+        volume_row.add_widget(volume_icon)
+        volume_row.add_widget(volume_text)
+        volume_row.add_widget(volume_slider)
+
+        track = SOUNDTRACKS_BY_ID.get(self.soundtrack_id, SOUNDTRACKS[0])
+        soundtrack_button = IconActionButton(
+            icon="music", title="Background music", detail=track["title"],
+            size_hint_y=None, height=dp(52), corner_radius=dp(14),
+            fill_color=surface, text_color=self.text_color,
+            muted_color=self.muted_color, icon_color=self.accent_color)
         soundtrack_button.bind(on_release=lambda *_: self._cycle_soundtrack(soundtrack_button))
-        palette_label = Label(text='Accent color', size_hint_y=None, height=dp(24),
-                              color=self.text_color, font_size='16sp', halign='left')
-        palette_label.bind(size=lambda widget, size: setattr(widget, 'text_size', size))
-        palette_row = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(5))
+
+        appearance_row = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(10))
+        board_button = IconActionButton(
+            icon="board", title="Board", detail=self.board_palette.title(),
+            corner_radius=dp(14), fill_color=surface, text_color=self.text_color,
+            muted_color=self.muted_color, icon_color=self.accent_color)
+        pieces_button = IconActionButton(
+            icon="piece", title="Pieces",
+            detail="Vector" if self.piece_style == "vector" else "Pixel",
+            corner_radius=dp(14), fill_color=surface, text_color=self.text_color,
+            muted_color=self.muted_color, icon_color=self.accent_color)
+        board_button.bind(on_release=lambda *_: self._cycle_board_palette(board_button))
+        pieces_button.bind(on_release=lambda *_: self._cycle_piece_style(pieces_button))
+        appearance_row.add_widget(board_button)
+        appearance_row.add_widget(pieces_button)
+
+        palette_row = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(6))
         self._settings_accent_buttons = []
-        palette_options = [('system', 'Auto', None)] + [
+        palette_options = [("system", "Auto", None)] + [
             (mode, mode.title(), color) for mode, color in ACCENT_PALETTES.items()]
         for mode, caption, color in palette_options:
-            color = self.accent_color if mode == self.accent_mode else (
-                color if color is not None else get_system_accent_color(self.dark_mode) or
-                ((.83, .65, .55, 1) if self.dark_mode else (.65, .40, .31, 1)))
+            if color is None:
+                color = get_system_accent_color(self.dark_mode) or (
+                    (.83, .65, .55, 1) if self.dark_mode else (.65, .40, .31, 1))
             choice = AccentChoiceButton(text=caption, size_hint=(1, 1),
-                                        corner_radius=dp(11), font_size='12sp',
-                                        fill_color=color,
-                                        text_color=self._accent_text_color(color),
+                                        corner_radius=dp(10), font_size="12sp",
+                                        fill_color=color, text_color=self._accent_text_color(color),
                                         selected=mode == self.accent_mode)
             choice._accent_mode = mode
             choice.bind(on_release=lambda *_args, selected=mode: self._set_accent_mode(selected))
             self._settings_accent_buttons.append(choice)
             palette_row.add_widget(choice)
-        close = PixelButton(text='Done', size_hint_y=None, height=dp(50), font_size='16sp', corner_radius=dp(14))
-        close.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
-        close.text_color = self.text_color
-        close.ripple_color = (*self.accent_color[:3], .34)
+
+        close = PixelButton(text="Done", size_hint_y=None, height=dp(44),
+                            font_size="15sp", corner_radius=dp(13),
+                            fill_color=self.accent_color,
+                            text_color=self._accent_text_color(self.accent_color))
         close.bind(on_release=view.dismiss)
-        card.add_widget(heading)
-        card.add_widget(volume_label)
-        card.add_widget(slider)
-        card.add_widget(difficulty_button)
-        card.add_widget(clock_button)
-        card.add_widget(soundtrack_button)
-        card.add_widget(board_button)
-        card.add_widget(pieces_button)
-        card.add_widget(palette_label)
-        card.add_widget(palette_row)
-        card.add_widget(close)
+        for widget in (heading, section("SOUND"), volume_row, soundtrack_button,
+                       section("APPEARANCE"), appearance_row, section("ACCENT COLOR"),
+                       palette_row, close):
+            card.add_widget(widget)
         view.add_widget(card)
         self._open_dialog_near_top(view, card)
         card.opacity = 0
-        Animation(opacity=1, duration=.20, t='out_quad').start(card)
+        Animation(opacity=1, duration=.20, t="out_quad").start(card)
 
     def _update_volume_controls(self, value, label):
-        label.text = f'Master volume  {round(value * 100)}%'
+        label.text = f'{round(value * 100)}%'
         self._set_master_volume(value)
 
     def _show_about(self):

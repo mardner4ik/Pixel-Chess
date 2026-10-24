@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import time
+import random
+import threading
+import math
 from pathlib import Path
 
 import chess
@@ -18,7 +21,7 @@ from kivy.uix.image import Image
 
 from chess_app.core.engine import ChessEngine
 from chess_app.ui.system_theme import get_system_accent_color, is_dark_mode
-from chess_app.ui.widgets import PixelButton, MenuIconButton, AccentChoiceButton, MenuPanel, RoundCard
+from chess_app.ui.widgets import PixelButton, MenuIconButton, AccentChoiceButton, MenuPanel, RoundCard, ToastMessage
 from chess_app.ui.board import ChessBoard, ACCENT_PALETTES, BOARD_PALETTES, BOT_POOL
 from chess_app.ui.dialogs import GameDialogsMixin
 from chess_app.ui.session import GameSessionMixin
@@ -50,6 +53,12 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         self._menu_animation = None
         self._menu_button_home_y = None
         self._menu_button_home_window = None
+        self._toast_message = None
+        self._toast_event = None
+        self._game_generation = 0
+        self._bot_cancel_event = None
+        self._bot_think_deadline = None
+        self._bot_countdown_event = None
         app = App.get_running_app()
         self.accent_mode = (app.config.get("appearance", "accent_mode")
                             if app is not None else "system")
@@ -61,6 +70,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         self._game_started = False
         self.difficulty = app.config.getdefault("game", "difficulty", "normal") if app is not None else "normal"
         self.time_control = app.config.getint("game", "time_control") if app is not None and app.config.has_option("game", "time_control") else 0
+        self.bot_thinking_delay = app.config.getboolean("game", "bot_thinking_delay") if app is not None and app.config.has_option("game", "bot_thinking_delay") else True
         self.board_palette = app.config.getdefault("game", "board_palette", "sage") if app is not None else "sage"
         self.piece_style = app.config.getdefault("game", "piece_style", "pixel") if app is not None else "pixel"
         saved_track = app.config.getdefault("game", "soundtrack", "friday_morning") if app is not None else "friday_morning"
@@ -299,10 +309,12 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         settings_slider = getattr(self, "_settings_slider", None)
         if settings_slider is not None:
             settings_slider.value_track_color = colors["accent_color"]
-        self._refresh_accent_choices(colors["accent_color"])
         for widget in self.walk():
             if isinstance(widget, PixelButton):
-                if getattr(widget, "_main_menu_button", False):
+                if (getattr(widget, "_main_menu_button", False)
+                        or isinstance(widget, AccentChoiceButton)
+                        or hasattr(widget, "_difficulty_level")
+                        or getattr(widget, "_difficulty_continue", False)):
                     continue
                 widget.fill_color = (.31, .31, .30, 1) if dark else (.85, .83, .79, 1)
                 widget.text_color = colors["text_color"]
@@ -311,6 +323,8 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
                     widget._github_icon.source = (
                         "assets/github-mark-light.png" if dark else "assets/github-mark.png")
                     widget._github_label.color = colors["text_color"]
+        self._refresh_accent_choices(colors["accent_color"])
+        self._refresh_difficulty_choices()
         side_picker = getattr(self, "_side_picker", None)
         if side_picker is not None and side_picker._is_open:
             for button, label in side_picker._role_choices:
@@ -389,8 +403,8 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         self.menu_popup._items = []
         for text, callback in (("Settings", self._select_settings),
                                ("About", self._select_about),
-                               ("Undo move", self.undo_move),
-                               ("Export PGN", self.export_pgn),
+                               ("Save", self._select_save),
+                               ("Undo move", self._select_undo),
                                ("Resign", self._select_resign)):
             item = PixelButton(text=text, font_size='15sp', size_hint=(1, 1), corner_radius=0,
                                fill_color=(.23, .23, .22, 1) if self.dark_mode else (.91, .90, .87, 1),
@@ -463,10 +477,44 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         self._close_about_menu()
         self._show_settings()
 
+    def _select_save(self):
+        self._close_about_menu()
+        self.save_game()
+
+    def _select_undo(self):
+        self._close_about_menu()
+        self.undo_move()
+
     def _select_resign(self):
         self._close_about_menu()
         if self._game_started:
             self._confirm_resignation()
+
+    def _show_toast(self, message):
+        if self._toast_event is not None:
+            self._toast_event.cancel()
+            self._toast_event = None
+        if self._toast_message is not None and self._toast_message.parent is self:
+            Animation.cancel_all(self._toast_message, "opacity")
+            self.remove_widget(self._toast_message)
+        toast = ToastMessage(message, size_hint=(None, None),
+                             size=(dp(250), dp(48)), opacity=0,
+                             pos_hint={"center_x": .5, "y": .025})
+        self._toast_message = toast
+        self.add_widget(toast)
+        Animation(opacity=1, duration=.14, t="out_quad").start(toast)
+
+        def dismiss_toast(_dt):
+            fade = Animation(opacity=0, duration=.18, t="out_quad")
+            def remove_toast(*_):
+                if toast.parent is self:
+                    self.remove_widget(toast)
+                if self._toast_message is toast:
+                    self._toast_message = None
+                    self._toast_event = None
+            fade.bind(on_complete=remove_toast)
+            fade.start(toast)
+        self._toast_event = Clock.schedule_once(dismiss_toast, 1.6)
 
 
 
@@ -541,21 +589,59 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             self.board_widget.targets = []
         self.board_widget.redraw()
 
+    def _cancel_bot_thinking(self):
+        self._game_generation += 1
+        if self._bot_cancel_event is not None:
+            self._bot_cancel_event.set()
+            self._bot_cancel_event = None
+        self._bot_think_deadline = None
+        if self._bot_countdown_event is not None:
+            self._bot_countdown_event.cancel()
+            self._bot_countdown_event = None
+
     def _start_bot(self, *_):
         if self._game_started and self.engine.board.turn != self.player_color and not self.engine.status()[1]:
+            if self._bot_cancel_event is not None:
+                return
             snapshot = self.engine.board.copy(stack=True)
-            future = BOT_POOL.submit(self._calculate_bot_move, snapshot, self.difficulty)
-            future.add_done_callback(lambda result: Clock.schedule_once(lambda _dt: self._apply_bot_result(result), 0))
+            generation = self._game_generation
+            cancel_event = threading.Event()
+            self._bot_cancel_event = cancel_event
+            thinking_time = random.uniform(4.0, 15.0) if self.bot_thinking_delay else 0.0
+            if thinking_time:
+                self._bot_think_deadline = time.monotonic() + thinking_time
+                self._bot_countdown_event = Clock.schedule_interval(self._update_bot_countdown, .25)
+                self._update_bot_countdown()
+            future = BOT_POOL.submit(self._calculate_bot_move, snapshot, self.difficulty,
+                                     thinking_time, cancel_event)
+            future.add_done_callback(lambda result: Clock.schedule_once(
+                lambda _dt: self._apply_bot_result(result, generation, cancel_event), 0))
 
     @staticmethod
-    def _calculate_bot_move(board, difficulty="normal"):
+    def _calculate_bot_move(board, difficulty="normal", thinking_time=None, cancel_event=None):
         engine = ChessEngine()
         engine.board = board
-        return engine.bot_move(difficulty)
+        return engine.bot_move(difficulty, thinking_time, cancel_event)
 
-    def _apply_bot_result(self, future):
-        if not self._game_started or self.engine.board.turn == self.player_color or self.engine.status()[1]:
+    def _update_bot_countdown(self, *_):
+        if self._bot_think_deadline is None or not self._game_started:
+            return False
+        remaining = max(0, math.ceil(self._bot_think_deadline - time.monotonic()))
+        status = f"OPPONENT THINKING · {remaining}s"
+        if self.time_control:
+            status += f"  •  {self._clock_text(self.engine.board.turn)}"
+        self.status_text = status
+
+    def _apply_bot_result(self, future, generation=None, cancel_event=None):
+        if (generation != self._game_generation or cancel_event is not self._bot_cancel_event
+                or cancel_event is None or cancel_event.is_set() or not self._game_started
+                or self.engine.board.turn == self.player_color or self.engine.status()[1]):
             return
+        self._bot_cancel_event = None
+        self._bot_think_deadline = None
+        if self._bot_countdown_event is not None:
+            self._bot_countdown_event.cancel()
+            self._bot_countdown_event = None
         try:
             move = future.result()
         except Exception:
@@ -578,6 +664,9 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         status, finished = self.engine.status()
         if not finished and status != "CHECK":
             status = "YOUR TURN" if self.engine.board.turn == self.player_color else "OPPONENT THINKING"
+            if self.engine.board.turn != self.player_color and self._bot_think_deadline is not None:
+                remaining = max(0, math.ceil(self._bot_think_deadline - time.monotonic()))
+                status = f"OPPONENT THINKING · {remaining}s"
         if self.time_control and self._game_started and not finished:
             side = self.engine.board.turn
             status = f"{status}  •  {self._clock_text(side)}"
@@ -592,6 +681,10 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             self._finish_round()
 
     def _finish_round(self):
+        if not self._game_started and self.result_visible:
+            return
+        self._game_started = False
+        self._cancel_bot_thinking()
         status, _ = self.engine.status()
         self.result_title = "Game over"
         self.result_detail = f"{status}   ·   {len(self.engine.board.move_stack)} plies   ·   {self._elapsed_text()}"
@@ -651,6 +744,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             self._open_dialog_near_top(self.result_overlay, self.result_overlay._result_card)
 
     def _return_to_main_menu(self):
+        self._cancel_bot_thinking()
         self._game_started = False
         self.selection = None
         self.result_visible = False
@@ -661,6 +755,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
 
 
     def new_game(self):
+        self._cancel_bot_thinking()
         self._game_started = False
         if self.result_overlay is not None:
             self.result_overlay.dismiss()
@@ -670,7 +765,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
     def _show_difficulty_picker(self, *_):
         if getattr(self, "_difficulty_picker", None) is not None and self._difficulty_picker._is_open:
             return
-        view = ModalView(size_hint=(.90, None), height=dp(280), auto_dismiss=False,
+        view = ModalView(size_hint=(.90, None), height=dp(300), auto_dismiss=False,
                          background="", background_color=(0, 0, 0, 0),
                          overlay_color=(0, 0, 0, .42))
         card = RoundCard(orientation="vertical", padding=(dp(20), dp(16)), spacing=dp(12),
@@ -678,7 +773,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
                          corner_radius=dp(26))
         heading = Label(text="Choose difficulty", size_hint_y=None, height=dp(38),
                         bold=True, font_size="22sp", color=self.text_color)
-        note = Label(text="Set the opponent strength for this game", size_hint_y=None,
+        note = Label(text="Easy is relaxed; Hard spends longer searching", size_hint_y=None,
                      height=dp(26), font_size="14sp", color=self.muted_color)
         choices_row = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(8))
         choice_buttons = {}
@@ -688,23 +783,50 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             button.bind(on_release=lambda *_args, selected=level: self._select_difficulty(selected))
             choice_buttons[level] = button
             choices_row.add_widget(button)
+        advanced = PixelButton(text="⚙  Advanced", size_hint_y=None, height=dp(44),
+                               corner_radius=dp(14), font_size="14sp")
+        advanced_options = BoxLayout(orientation="vertical", size_hint_y=None,
+                                     height=dp(0), spacing=dp(6), opacity=0)
+        thinking_toggle = PixelButton(text="Bot thinking: 4–15 seconds", size_hint_y=None,
+                                      height=dp(38), corner_radius=dp(12), font_size="13sp")
+        thinking_toggle.bind(on_release=lambda *_: self._toggle_bot_thinking(thinking_toggle))
+        advanced_options.add_widget(thinking_toggle)
+        time_row = BoxLayout(size_hint_y=None, height=dp(38), spacing=dp(5))
+        time_buttons = {}
+        for minutes, caption in ((0, "Off"), (3, "3 min"), (5, "5 min"), (10, "10 min")):
+            option = PixelButton(text=caption, corner_radius=dp(11), font_size="12sp")
+            option.bind(on_release=lambda *_args, value=minutes: self._set_picker_time(value))
+            time_buttons[minutes] = option
+            time_row.add_widget(option)
+        advanced_options.add_widget(time_row)
+        advanced.bind(on_release=lambda *_: self._toggle_advanced_options(view))
         actions = BoxLayout(size_hint_y=None, height=dp(48), spacing=dp(10))
         back = PixelButton(text="Back", corner_radius=dp(14), font_size="14sp")
         back.bind(on_release=lambda *_: self._cancel_difficulty_picker(view))
         continue_button = PixelButton(text="Choose color", corner_radius=dp(14), font_size="14sp")
         continue_button.fill_color = self.accent_color
         continue_button.text_color = self._accent_text_color(self.accent_color)
+        continue_button._difficulty_continue = True
         continue_button.bind(on_release=lambda *_: self._continue_to_side_picker(view))
         actions.add_widget(back)
         actions.add_widget(continue_button)
         card.add_widget(heading)
         card.add_widget(note)
         card.add_widget(choices_row)
+        card.add_widget(advanced)
+        card.add_widget(advanced_options)
         card.add_widget(actions)
         view.add_widget(card)
         view._difficulty_choices = choice_buttons
+        view._difficulty_continue_button = continue_button
+        view._difficulty_card = card
+        view._advanced_options = advanced_options
+        view._advanced_button = advanced
+        view._thinking_toggle = thinking_toggle
+        view._time_buttons = time_buttons
         self._difficulty_picker = view
         self._refresh_difficulty_choices()
+        self._refresh_advanced_picker()
         self._open_dialog_near_top(view, card)
         card.opacity = 0
         Animation(opacity=1, duration=.20, t="out_quad").start(card)
@@ -720,6 +842,9 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             else:
                 button.fill_color = (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1)
                 button.text_color = self.text_color
+        continue_button = view._difficulty_continue_button
+        continue_button.fill_color = self.accent_color
+        continue_button.text_color = self._accent_text_color(self.accent_color)
 
     def _select_difficulty(self, level):
         self.difficulty = level if level in {"easy", "normal", "hard"} else "normal"
@@ -728,6 +853,41 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
             app.config.set("game", "difficulty", self.difficulty)
             app.config.write()
         self._refresh_difficulty_choices()
+
+    def _toggle_advanced_options(self, view):
+        options = view._advanced_options
+        expanded = options.height <= dp(1)
+        options.height = dp(86) if expanded else dp(0)
+        options.opacity = 1 if expanded else 0
+        view._difficulty_card.height = dp(390 if expanded else 300)
+
+    def _refresh_advanced_picker(self):
+        view = getattr(self, "_difficulty_picker", None)
+        if view is None:
+            return
+        view._thinking_toggle.text = ("Bot thinking: 4–15 seconds" if self.bot_thinking_delay
+                                      else "Bot moves instantly")
+        for minutes, button in view._time_buttons.items():
+            selected = self.time_control == minutes
+            button.fill_color = self.accent_color if selected else (
+                (.31, .31, .30, 1) if self.dark_mode else (.85, .83, .79, 1))
+            button.text_color = self._accent_text_color(self.accent_color) if selected else self.text_color
+
+    def _toggle_bot_thinking(self, button):
+        self.bot_thinking_delay = not self.bot_thinking_delay
+        app = App.get_running_app()
+        if app is not None:
+            app.config.set("game", "bot_thinking_delay", str(self.bot_thinking_delay))
+            app.config.write()
+        self._refresh_advanced_picker()
+
+    def _set_picker_time(self, minutes):
+        self.time_control = minutes if minutes in {0, 3, 5, 10} else 0
+        app = App.get_running_app()
+        if app is not None:
+            app.config.set("game", "time_control", str(self.time_control))
+            app.config.write()
+        self._refresh_advanced_picker()
 
     def _continue_to_side_picker(self, view):
         view.dismiss()
@@ -795,6 +955,7 @@ class GameScreen(GameDialogsMixin, GameSessionMixin, FloatLayout):
         Clock.schedule_once(fit_role_cards, 0)
 
     def _begin_game(self, player_color, view):
+        self._cancel_bot_thinking()
         view.dismiss()
         self._side_picker = None
         Animation.cancel_all(self.board_widget)

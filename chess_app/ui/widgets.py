@@ -1,7 +1,7 @@
 from kivy.animation import Animation
 from kivy.clock import Clock
 from kivy.metrics import dp
-from kivy.properties import ListProperty, NumericProperty, BooleanProperty
+from kivy.properties import ListProperty, NumericProperty, BooleanProperty, StringProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 
@@ -98,3 +98,142 @@ class RoundCard(BoxLayout):
 
     def _sync_fill(self, *_):
         self._fill_instruction.rgba = self.fill_color
+
+
+class ToastMessage(BoxLayout):
+    """Small, non-modal confirmation shown briefly above the board."""
+
+    def __init__(self, message, **kwargs):
+        super().__init__(orientation="horizontal", **kwargs)
+        from kivy.graphics import Color, RoundedRectangle
+        from kivy.uix.label import Label
+
+        with self.canvas.before:
+            self._toast_color = Color(.16, .16, .15, .96)
+            self._toast_shape = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(22)])
+        self.bind(pos=self._sync_toast, size=self._sync_toast)
+        label = Label(text=message, color=(.97, .96, .93, 1),
+                      font_size="15sp", bold=True, halign="center", valign="middle")
+        label.bind(size=lambda widget, size: setattr(widget, "text_size", size))
+        self.add_widget(label)
+
+    def _sync_toast(self, *_):
+        self._toast_shape.pos = self.pos
+        self._toast_shape.size = self.size
+
+
+class SettingsIcon(Widget):
+    """Small vector icon drawn with Kivy primitives (independent of font glyphs)."""
+
+    icon = StringProperty("music")
+    tint = ListProperty([.65, .40, .31, 1])
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.bind(pos=self._redraw_icon, size=self._redraw_icon,
+                  icon=self._redraw_icon, tint=self._redraw_icon)
+        self._redraw_icon()
+
+    def _redraw_icon(self, *_):
+        from kivy.graphics import Color, Ellipse, Line, RoundedRectangle, Triangle
+
+        self.canvas.clear()
+        x, y = self.pos
+        w, h = self.size
+        if w <= 0 or h <= 0:
+            return
+        cx, cy = x + w / 2, y + h / 2
+        r = min(w, h) * .46
+        color = self.tint
+        with self.canvas:
+            Color(color[0], color[1], color[2], .16)
+            Ellipse(pos=(cx-r, cy-r), size=(2*r, 2*r))
+            Color(*color)
+            width = max(1, dp(1.7))
+            if self.icon == "clock":
+                Line(circle=(cx, cy, r * .58), width=width)
+                Line(points=(cx, cy, cx, cy + r * .34), width=width, cap="round")
+                Line(points=(cx, cy, cx + r * .28, cy - r * .12), width=width, cap="round")
+                Ellipse(pos=(cx-dp(2), cy-dp(2)), size=(dp(4), dp(4)))
+            elif self.icon == "board":
+                edge = r * 1.1
+                left, bottom = cx-edge, cy-edge
+                Line(rounded_rectangle=(left, bottom, 2*edge, 2*edge, dp(2)), width=width)
+                for offset in (-edge/3, edge/3):
+                    Line(points=(cx+offset, bottom, cx+offset, bottom+2*edge), width=width)
+                    Line(points=(left, cy+offset, left+2*edge, cy+offset), width=width)
+            elif self.icon == "piece":
+                head = dp(6)
+                Ellipse(pos=(cx-head/2, cy+r*.42-head/2), size=(head, head))
+                Triangle(points=(cx-r*.34, cy-r*.22, cx+r*.34, cy-r*.22,
+                                 cx+r*.18, cy+r*.22))
+                RoundedRectangle(pos=(cx-r*.45, cy-r*.47), size=(r*.9, dp(4)), radius=[dp(2)])
+            elif self.icon == "palette":
+                for ox, oy, scale in ((-.35, .25, .20), (.25, .30, .18),
+                                      (-.24, -.28, .19), (.32, -.25, .16)):
+                    Ellipse(pos=(cx+ox*r-scale*r, cy+oy*r-scale*r),
+                            size=(2*scale*r, 2*scale*r))
+            elif self.icon == "volume":
+                left = cx-r*.48
+                Triangle(points=(left, cy-r*.20, left+r*.42, cy-r*.20, left+r*.42, cy+r*.20))
+                RoundedRectangle(pos=(left-r*.12, cy-r*.22), size=(r*.28, r*.44), radius=[dp(1)])
+                Line(circle=(cx+r*.05, cy, r*.38, -55, 55), width=width)
+                Line(circle=(cx+r*.05, cy, r*.62, -52, 52), width=width)
+            else:  # music note
+                head = dp(5)
+                Ellipse(pos=(cx-r*.44, cy-r*.38), size=(head, head*.72))
+                Ellipse(pos=(cx+r*.08, cy-r*.20), size=(head, head*.72))
+                Line(points=(cx-r*.30, cy-r*.04, cx-r*.30, cy+r*.48,
+                             cx+r*.22, cy+r*.62, cx+r*.22, cy+r*.13),
+                     width=width, cap="round", joint="round")
+
+
+class IconActionButton(PixelButton):
+    """A button with a drawn icon, a title, and an optional value subtitle."""
+
+    muted_color = ListProperty([.37, .37, .35, 1])
+    icon_color = ListProperty([.65, .40, .31, 1])
+
+    def __init__(self, icon, title, detail="", **kwargs):
+        super().__init__(text="", **kwargs)
+        from kivy.uix.label import Label
+
+        self.content = BoxLayout(orientation="horizontal", spacing=dp(10),
+                                 padding=(dp(12), 0, dp(8), 0))
+        self.icon_widget = SettingsIcon(icon=icon, tint=self.icon_color,
+                                        size_hint=(None, None), size=(dp(34), dp(34)))
+        self.title_label = Label(text=title, color=self.text_color,
+                                 font_size="14sp", bold=True, halign="left",
+                                 valign="bottom", shorten=True, shorten_from="right")
+        self.detail_label = Label(text=detail, color=self.muted_color,
+                                  font_size="12sp", halign="left", valign="top",
+                                  shorten=True, shorten_from="right")
+        self.text_stack = BoxLayout(orientation="vertical", spacing=-dp(1))
+        self.text_stack.add_widget(self.title_label)
+        self.text_stack.add_widget(self.detail_label)
+        self.arrow_label = Label(text="›", color=self.muted_color,
+                                 font_size="22sp", size_hint_x=None, width=dp(18))
+        self.content.add_widget(self.icon_widget)
+        self.content.add_widget(self.text_stack)
+        self.content.add_widget(self.arrow_label)
+        self.add_widget(self.content)
+        self.bind(pos=self._layout_content, size=self._layout_content,
+                  text_color=self._sync_content_colors,
+                  muted_color=self._sync_content_colors,
+                  icon_color=self._sync_content_colors)
+        self._layout_content()
+        self._sync_content_colors()
+
+    def _layout_content(self, *_):
+        if not hasattr(self, "content"):
+            return
+        self.content.pos = self.pos
+        self.content.size = self.size
+
+    def _sync_content_colors(self, *_):
+        if not hasattr(self, "title_label"):
+            return
+        self.title_label.color = self.text_color
+        self.detail_label.color = self.muted_color
+        self.arrow_label.color = self.muted_color
+        self.icon_widget.tint = self.icon_color

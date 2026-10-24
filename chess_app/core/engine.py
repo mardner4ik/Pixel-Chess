@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import threading
 import time
 
 import chess
@@ -21,19 +22,23 @@ class ChessEngine:
             raise ValueError("Illegal move")
         self.board.push(move)
 
-    def bot_move(self, difficulty: str = "normal") -> chess.Move | None:
+    def bot_move(self, difficulty: str = "normal", thinking_time: float | None = None,
+                 cancel_event: threading.Event | None = None) -> chess.Move | None:
         moves = list(self.board.legal_moves)
         if not moves:
             return None
-        # Iterative deepening gives a legal answer quickly, while a variable
-        # budget makes the opponent feel less mechanical on a phone.
+
+        started_at = time.monotonic()
+        # The UI runs this method on a worker thread. Keep the chosen move
+        # hidden until a randomly selected 4–15 second thinking period ends.
+        thinking_time = random.uniform(4.0, 15.0) if thinking_time is None else max(0.0, thinking_time)
         complexity = min(1.0, len(moves) / 36)
-        budgets = {"easy": (.10, .24), "normal": (.38, .90), "hard": (.85, 1.50)}
-        low, high = budgets.get(difficulty, budgets["normal"])
-        budget = random.uniform(low, high) + complexity * (high - low)
-        if self.board.is_check() or len(moves) <= 4:
-            budget += random.uniform(.12, .30)
-        self._deadline = time.monotonic() + budget
+        search_budgets = {"easy": (.12, .38), "normal": (.45, 1.35), "hard": (1.25, 3.8)}
+        low, high = search_budgets.get(difficulty, search_budgets["normal"])
+        search_budget = random.uniform(low, high) * (.85 + .25 * complexity)
+        search_budget = min(search_budget, max(.05, thinking_time - .05))
+        self._deadline = time.monotonic() + search_budget
+        self._cancel_event = cancel_event
         self._nodes = 0
         self._table = {}
         move = self._ordered(moves)[0]
@@ -44,10 +49,73 @@ class ChessEngine:
                 if candidate is not None:
                     move = candidate
                     self._root_move = move
-            except SearchTimeout:
+            except (SearchTimeout, SearchCancelled):
                 break
+
+        if difficulty == "easy":
+            try:
+                move = self._choose_easy_move(moves)
+            except SearchCancelled:
+                return None
+
+        wait = thinking_time - (time.monotonic() - started_at)
+        if wait > 0:
+            if cancel_event is not None:
+                if cancel_event.wait(wait):
+                    return None
+            else:
+                time.sleep(wait)
+        if cancel_event is not None and cancel_event.is_set():
+            return None
         self.board.push(move)
         return move
+
+    def _choose_easy_move(self, moves: list[chess.Move]) -> chess.Move:
+        """Add beginner-level mistakes while still preferring sensible moves."""
+        if random.random() < .25:
+            return random.choice(moves)
+
+        scored_moves = []
+        for move in moves:
+            self._check_cancelled()
+            self.board.push(move)
+            try:
+                if self.board.is_checkmate():
+                    score = 100_000
+                elif (self.board.is_stalemate() or self.board.is_insufficient_material()
+                      or self.board.can_claim_draw()):
+                    score = 0
+                else:
+                    replies = list(self.board.legal_moves)
+                    if not replies:
+                        score = 0
+                    else:
+                        # A one reply lookahead is cheap but catches obvious
+                        # hanging pieces. Randomizing among several choices
+                        # keeps this level substantially weaker than Normal.
+                        reply_scores = []
+                        for reply in replies:
+                            self._check_cancelled()
+                            self.board.push(reply)
+                            try:
+                                if self.board.is_checkmate():
+                                    value = -100_000
+                                elif (self.board.is_stalemate() or self.board.is_insufficient_material()
+                                      or self.board.can_claim_draw()):
+                                    value = 0
+                                else:
+                                    value = self._evaluate()
+                                reply_scores.append(value)
+                            finally:
+                                self.board.pop()
+                        score = min(reply_scores)
+            finally:
+                self.board.pop()
+            scored_moves.append((score, move))
+
+        scored_moves.sort(key=lambda item: item[0], reverse=True)
+        candidate_count = min(8, len(scored_moves))
+        return random.choice([move for _, move in scored_moves[:candidate_count]])
 
     def _ordered(self, moves):
         values = {chess.PAWN: 100, chess.KNIGHT: 320, chess.BISHOP: 335,
@@ -61,6 +129,7 @@ class ChessEngine:
         return sorted(moves, key=score, reverse=True)
 
     def _check_time(self):
+        self._check_cancelled()
         self._nodes += 1
         if (self._nodes & 255) == 0:
             # Search runs in a worker thread, but CPython still shares the GIL.
@@ -68,6 +137,10 @@ class ChessEngine:
             time.sleep(0)
             if time.monotonic() >= self._deadline:
                 raise SearchTimeout
+
+    def _check_cancelled(self):
+        if getattr(self, "_cancel_event", None) is not None and self._cancel_event.is_set():
+            raise SearchCancelled
 
     def _root_search(self, depth, moves):
         alpha, beta = -100_000, 100_000
@@ -223,4 +296,8 @@ class ChessEngine:
 
 class SearchTimeout(Exception):
     """Raised internally when the current iterative-deepening budget expires."""
+
+
+class SearchCancelled(Exception):
+    """Raised when the UI invalidates an in-flight search."""
 
