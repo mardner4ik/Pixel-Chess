@@ -10,57 +10,17 @@ permissions:
 
 jobs:
   android:
-    name: Android APK
+    name: Android APK (built locally)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
-      - uses: actions/cache@v4
-        with:
-          path: ~/.buildozer
-          key: ${{ runner.os }}-android-${{ hashFiles('buildozer.spec') }}
-          restore-keys: ${{ runner.os }}-android-
-      - name: Install Android build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf automake autopoint gettext \
-            libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 \
-            cmake libffi-dev libssl-dev
-      - name: Build APK
-        id: build-apk
-        continue-on-error: true
-        run: |
-          set +e
-          set -o pipefail
-          (set -e
-          python -m pip install --upgrade pip
-          python -m pip install git+https://github.com/kivy/buildozer
-          python -m pip install legacy-cgi setuptools cython==0.29.34
-          buildozer android debug) 2>&1 | tee /tmp/android-build.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            details=$(grep -Ei '(^|[[:space:]])(ERROR|Error|FAILED|Traceback):|error:|fatal error:|No such file or directory|undefined reference|command failed' /tmp/android-build.log | tail -n 30 | tr '\n' ' ' | cut -c1-4000)
-            details=${details//'%'/'%25'}
-            details=${details//$'\r'/'%0D'}
-            details=${details//$'\n'/'%0A'}
-            echo "::error title=Android build details::$details"
-          fi
-          exit "$status"
-      - uses: actions/upload-artifact@v4
-        if: steps.build-apk.outcome == 'failure'
-        with:
-          name: android-build-log
-          path: /tmp/android-build.log
-          retention-days: 3
-      - name: Stop if Android build failed
-        if: steps.build-apk.outcome == 'failure'
-        run: exit 1
+          ref: release-assets-${{ github.ref_name }}
+          path: prebuilt-release-assets
       - uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: bin/*.apk
+          path: prebuilt-release-assets/*.apk
           if-no-files-found: error
           retention-days: 7
 

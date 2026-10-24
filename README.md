@@ -96,7 +96,7 @@ python -m pip install -r requirements.txt pyinstaller
 ./packaging/linux/build.sh
 ```
 
-The generated archive is written to `Release/`. Tagged GitHub releases build Linux, Android, and Windows artifacts automatically through [the release workflow](.github/workflows/release.yml).
+The generated archive is written to `Release/`. GitHub releases publish the locally built Android APK together with Linux and Windows desktop packages; the desktop packages are built by [the release workflow](.github/workflows/release.yml).
 
 ## Project structure
 
