@@ -144,7 +144,9 @@ class SettingsIcon(Widget):
         if w <= 0 or h <= 0:
             return
         cx, cy = x + w / 2, y + h / 2
-        r = min(w, h) * .46
+        # Keep the glyph comfortably inside its badge; board grid strokes used
+        # to extend beyond the circular background on compact settings rows.
+        r = min(w, h) * .40
         color = self.tint
         with self.canvas:
             Color(color[0], color[1], color[2], .16)
@@ -157,14 +159,14 @@ class SettingsIcon(Widget):
                 Line(points=(cx, cy, cx + r * .28, cy - r * .12), width=width, cap="round")
                 Ellipse(pos=(cx-dp(2), cy-dp(2)), size=(dp(4), dp(4)))
             elif self.icon == "board":
-                edge = r * 1.1
+                edge = r * .68
                 left, bottom = cx-edge, cy-edge
                 Line(rounded_rectangle=(left, bottom, 2*edge, 2*edge, dp(2)), width=width)
                 for offset in (-edge/3, edge/3):
                     Line(points=(cx+offset, bottom, cx+offset, bottom+2*edge), width=width)
                     Line(points=(left, cy+offset, left+2*edge, cy+offset), width=width)
             elif self.icon == "piece":
-                head = dp(6)
+                head = dp(5)
                 Ellipse(pos=(cx-head/2, cy+r*.42-head/2), size=(head, head))
                 Triangle(points=(cx-r*.34, cy-r*.22, cx+r*.34, cy-r*.22,
                                  cx+r*.18, cy+r*.22))
@@ -202,7 +204,7 @@ class IconActionButton(PixelButton):
         self.content = BoxLayout(orientation="horizontal", spacing=dp(10),
                                  padding=(dp(10), 0, dp(8), 0))
         self.icon_widget = SettingsIcon(icon=icon, tint=self.icon_color,
-                                        size_hint=(None, None), size=(dp(26), dp(26)))
+                                        size_hint=(None, None), size=(dp(22), dp(22)))
         self.title_label = Label(text=title, color=self.text_color,
                                  font_size="14sp", bold=True, halign="left",
                                  valign="bottom", shorten=True, shorten_from="right")
