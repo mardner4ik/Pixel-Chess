@@ -45,6 +45,12 @@ jobs:
             echo "::error title=Android build details::$details"
           fi
           exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: steps.build-apk.outcome == 'failure'
+        with:
+          name: android-build-log
+          path: /tmp/android-build.log
+          retention-days: 3
       - name: Stop if Android build failed
         if: steps.build-apk.outcome == 'failure'
         run: exit 1
@@ -95,6 +101,12 @@ jobs:
             echo "::error title=Linux build details::$details"
           fi
           exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: steps.build-linux.outcome == 'failure'
+        with:
+          name: linux-build-log
+          path: /tmp/linux-build.log
+          retention-days: 3
       - name: Stop if Linux build failed
         if: steps.build-linux.outcome == 'failure'
         run: exit 1
